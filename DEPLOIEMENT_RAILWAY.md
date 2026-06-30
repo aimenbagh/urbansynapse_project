@@ -75,3 +75,4 @@ frontend, puis redéploie le backend.
 - Dans Settings → Build, le "Builder" peut être mis sur "Dockerfile" pour
   forcer l'usage du Dockerfile.
 - Regarde les logs de build (onglet Deployments → le déploiement → View logs).
+
