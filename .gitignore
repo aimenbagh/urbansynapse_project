@@ -11,3 +11,7 @@ data/processed/*
 !data/**/.gitkeep
 .DS_Store
 *.db
+
+# Garder la série temporelle nécessaire au forecasting ML
+!backend/data/processed/algeria_timeseries.json
+!data/processed/algeria_timeseries.json

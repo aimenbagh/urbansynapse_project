@@ -9,4 +9,10 @@ export default defineConfig({
     port: 5173,
     proxy: { "/api": { target: "http://localhost:8000", changeOrigin: true } },
   },
+  preview: {
+    port: 4173,
+    host: true,
+    // Autoriser les domaines Railway (et tout autre hôte de déploiement)
+    allowedHosts: true,
+  },
 });
