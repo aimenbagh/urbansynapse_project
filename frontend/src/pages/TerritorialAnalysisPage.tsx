@@ -21,6 +21,7 @@ const LAYERS = [
   { id: "risks", label: "Risques naturels", icon: AlertTriangle },
   { id: "mobility", label: "Mobilité & Accessibilité", icon: Navigation },
   { id: "socio", label: "Données socio-économiques", icon: BarChart2 },
+  { id: "communes", label: "Communes (population réelle)", icon: Users },
 ];
 
 const RISKS = [

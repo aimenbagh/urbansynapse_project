@@ -11,3 +11,6 @@ export const fetchSocioLayer = async (territoryId: number) =>
 
 export const fetchClimateLayer = async (territoryId: number, variable: "temperature" | "precipitation") =>
   (await apiClient.get(`/layers/${territoryId}/climate`, { params: { variable } })).data;
+
+export const fetchCommunesLayer = async (territoryId: number) =>
+  (await apiClient.get(`/layers/${territoryId}/communes`)).data;

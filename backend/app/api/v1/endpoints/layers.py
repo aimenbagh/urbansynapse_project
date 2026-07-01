@@ -163,3 +163,38 @@ def climate_layer(territory_id: int, db: Session = Depends(get_db), variable: st
                                "precipitation": round(precip)},
             })
     return {"type": "FeatureCollection", "variable": variable, "features": features}
+
+
+@router.get("/{territory_id}/communes")
+def communes_layer(territory_id: int, db: Session = Depends(get_db)):
+    """Couche des communes réelles (population RGPH 2008) — Alger uniquement.
+
+    Affiche les communes avec leur population réelle sous forme de points
+    dimensionnés selon la population.
+    """
+    from app.models.territory import Territory
+    t = db.get(Territory, territory_id)
+    if not t:
+        raise HTTPException(404, "Territoire introuvable")
+
+    # Données réelles disponibles pour Alger (wilaya 16)
+    if t.wilaya_code != "16":
+        return {"type": "FeatureCollection", "features": [],
+                "note": "Données communales réelles disponibles pour Alger uniquement."}
+
+    from app.data.communes_alger import COMMUNES_ALGER
+    features = []
+    for c in COMMUNES_ALGER:
+        if c["lon"] is None or c["lat"] is None:
+            continue
+        features.append({
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [c["lon"], c["lat"]]},
+            "properties": {
+                "kind": "commune", "name": c["name"],
+                "population": c["population"],
+                "growth_rate": c["growth_rate"],
+            },
+        })
+    return {"type": "FeatureCollection", "features": features,
+            "source": "RGPH 2008 - Office National des Statistiques"}

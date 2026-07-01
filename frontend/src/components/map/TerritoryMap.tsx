@@ -3,7 +3,7 @@ import Map, { Source, Layer, Popup, NavigationControl, type MapLayerMouseEvent }
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useQuery } from "@tanstack/react-query";
 import { fetchTerritoryGeoJSON } from "@/api/geo";
-import { fetchRiskLayer, fetchMobilityLayer, fetchSocioLayer, fetchClimateLayer } from "@/api/layers";
+import { fetchRiskLayer, fetchMobilityLayer, fetchSocioLayer, fetchClimateLayer, fetchCommunesLayer } from "@/api/layers";
 import { exportGeoJSON } from "@/api/geo";
 import { BASEMAPS, type BasemapId } from "./basemaps";
 import { Layers as LayersIcon, Download, Image as ImageIcon, Thermometer, Box, Search, Ruler, Pentagon, Trash2 } from "lucide-react";
@@ -67,11 +67,13 @@ export default function TerritoryMap({ planMode = false }: { planMode?: boolean 
   const showRisks = activeLayers.includes("risks");
   const showMobility = activeLayers.includes("mobility");
   const showSocio = activeLayers.includes("socio");
+  const showCommunes = activeLayers.includes("communes");
 
   const { data } = useQuery({ queryKey: ["geojson", territoryId], queryFn: () => fetchTerritoryGeoJSON(territoryId) });
   const { data: risks } = useQuery({ queryKey: ["risks", territoryId], queryFn: () => fetchRiskLayer(territoryId), enabled: showRisks });
   const { data: mobility } = useQuery({ queryKey: ["mobility", territoryId], queryFn: () => fetchMobilityLayer(territoryId), enabled: showMobility });
   const { data: socio } = useQuery({ queryKey: ["socio", territoryId], queryFn: () => fetchSocioLayer(territoryId), enabled: showSocio });
+  const { data: communes } = useQuery({ queryKey: ["communes", territoryId], queryFn: () => fetchCommunesLayer(territoryId), enabled: showCommunes });
   const { data: climate } = useQuery({
     queryKey: ["climate", territoryId, climateVar],
     queryFn: () => fetchClimateLayer(territoryId, climateVar!),
@@ -176,6 +178,7 @@ export default function TerritoryMap({ planMode = false }: { planMode?: boolean 
   if (showRisks) interactive.push("risks-fill");
   if (showMobility) interactive.push("mobility-line");
   if (showSocio) interactive.push("socio-circle");
+  if (showCommunes) interactive.push("communes-circle");
   if (climateVar) interactive.push("climate-fill");
 
   return (
@@ -395,13 +398,33 @@ export default function TerritoryMap({ planMode = false }: { planMode?: boolean 
               }} />
           </Source>
         )}
+        {showCommunes && communes && (
+          <Source id="communes" type="geojson" data={communes}>
+            <Layer id="communes-circle" type="circle"
+              paint={{
+                "circle-radius": ["interpolate", ["linear"], ["get", "population"], 20000, 8, 120000, 30],
+                "circle-color": "#f59e0b", "circle-opacity": 0.5,
+                "circle-stroke-color": "#fbbf24", "circle-stroke-width": 1.5,
+              }} />
+            <Layer id="communes-label" type="symbol"
+              layout={{ "text-field": ["get", "name"], "text-size": 10, "text-offset": [0, 1.8] }}
+              paint={{ "text-color": "#fbbf24", "text-halo-color": "#0a1428", "text-halo-width": 1 }} />
+          </Source>
+        )}
 
 
 
         {popup && (
           <Popup longitude={popup.lng} latitude={popup.lat} closeButton onClose={() => setPopup(null)} anchor="bottom" maxWidth="280px">
             <div className="text-xs text-slate-800">
-              {popup.props.kind === "climate" ? (
+              {popup.props.kind === "commune" ? (
+                <>
+                  <p className="font-semibold">{popup.props.name}</p>
+                  <p>Population (2008) : {Number(popup.props.population).toLocaleString()}</p>
+                  <p>Taux d'accroissement : {popup.props.growth_rate}%</p>
+                  <p className="mt-1 text-[10px] text-slate-500">Source : RGPH 2008</p>
+                </>
+              ) : popup.props.kind === "climate" ? (
                 <>
                   <p className="font-semibold">{popup.props.zone}</p>
                   <p>Température estivale : {popup.props.temperature} °C</p>
