@@ -1,37 +1,36 @@
-# Déploiement : Backend Railway + Frontend Vercel
+# Correction : bouton "Générer un rapport décisionnel" (étape 4)
 
 ═══════════════════════════════════════════════════════════════
-## FRONTEND → VERCEL (nouveau)
+## LE PROBLÈME
 ═══════════════════════════════════════════════════════════════
-- `frontend/vercel.json` — NOUVEAU
-  * framework Vite, build → dist
-  * routage SPA : toutes les routes renvoient index.html
-    (recharger /wilaya/16 ne fera plus 404)
-- `frontend/.vercelignore` — NOUVEAU
-- `frontend/package.json` — TypeScript FIGÉ à 5.6.3 (exact, sans ^)
-  pour éviter que Vercel installe TS 6+ qui casse le build.
+Le bouton de l'étape 4 ne faisait rien de visible (il tentait juste d'ouvrir
+la page Rapports). Vu son nom "Générer", tu attendais qu'il génère le rapport.
+
+## LA CORRECTION
+Le bouton "Générer un rapport décisionnel" TÉLÉCHARGE maintenant directement
+le rapport PDF (comme sur la page Rapports), avec double sécurité :
+  1. Essaie le PDF du backend.
+  2. Si le backend n'est pas joignable → génère le PDF dans le navigateur.
+Le bouton affiche "Génération…" puis "Rapport téléchargé !".
+
+Les 3 autres étapes gardent leur comportement (elles ouvrent la bonne page).
 
 ═══════════════════════════════════════════════════════════════
-## BACKEND → RAILWAY (déjà configuré)
+## FICHIER
 ═══════════════════════════════════════════════════════════════
-Inchangé : backend/Dockerfile + railway.json + requirements.txt.
-Root Directory = backend, Builder = Dockerfile.
+- `frontend/src/pages/AboutPage.tsx` — étape 4 génère le PDF directement.
 
 ═══════════════════════════════════════════════════════════════
-## GUIDE COMPLET : DEPLOIEMENT.md
+## APRÈS COPIE
 ═══════════════════════════════════════════════════════════════
-RÉSUMÉ :
-1. BACKEND (Railway) :
-   - Root Directory = backend, Builder = Dockerfile
-   - Variables : SECRET_KEY, BACKEND_CORS_ORIGINS=* (+ PostgreSQL)
-   - Generate Domain → note l'URL.
-2. FRONTEND (Vercel) :
-   - vercel.com → Import repo → Root Directory = frontend
-   - Variable : VITE_API_BASE_URL = https://URL-BACKEND/api/v1
-   - Deploy → URL de ton app.
-3. Sécuriser : BACKEND_CORS_ORIGINS = https://URL-VERCEL (puis redéployer backend).
+Frontend uniquement :
+    cd frontend
+    npm run dev
 
-IMPORTANT : sur Vercel, VITE_API_BASE_URL est lue AU BUILD → si tu la changes,
-redéploie le frontend.
+ESSAYE : Assistant guidé → étape 4 → "Générer un rapport décisionnel" →
+un PDF se télécharge (rapport de la wilaya active).
 
-Vérifié : build frontend OK avec TS 5.6.3, URL API intégrée, vercel.json valide.
+NOTE : le rapport concerne la WILAYA ACTIVE (celle sélectionnée en haut).
+Change-la dans le sélecteur en haut si tu veux le rapport d'une autre wilaya.
+
+Vérifié : endpoint PDF backend OK (200), build OK.

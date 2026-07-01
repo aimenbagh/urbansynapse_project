@@ -3,6 +3,7 @@ import random
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.db.session import get_db
+from app.api.deps import require_admin
 from app.schemas.ingest import (
     TerritoryCreateIn, ZoneCreateIn, IndicatorIn, EnergyBalanceIn,
 )
@@ -14,7 +15,7 @@ CLASSES = ["A", "B", "C", "D", "E", "F", "G"]
 
 
 @router.post("/territories")
-def add_territory(payload: TerritoryCreateIn, db: Session = Depends(get_db)):
+def add_territory(payload: TerritoryCreateIn, db: Session = Depends(get_db), admin=Depends(require_admin)):
     from app.models.territory import Territory
     t = Territory(
         name=payload.name, wilaya_code=payload.wilaya_code,
@@ -28,7 +29,7 @@ def add_territory(payload: TerritoryCreateIn, db: Session = Depends(get_db)):
 
 
 @router.post("/zones")
-def add_zone(payload: ZoneCreateIn, db: Session = Depends(get_db)):
+def add_zone(payload: ZoneCreateIn, db: Session = Depends(get_db), admin=Depends(require_admin)):
     from app.models.territory import Territory, Zone, Building
 
     territory = db.get(Territory, payload.territory_id)
@@ -80,7 +81,7 @@ def add_zone(payload: ZoneCreateIn, db: Session = Depends(get_db)):
 
 
 @router.post("/indicators")
-def add_indicator(payload: IndicatorIn, db: Session = Depends(get_db)):
+def add_indicator(payload: IndicatorIn, db: Session = Depends(get_db), admin=Depends(require_admin)):
     from app.models.indicator import Indicator
     from app.models.territory import Territory
     if not db.get(Territory, payload.territory_id):
@@ -101,7 +102,7 @@ def add_indicator(payload: IndicatorIn, db: Session = Depends(get_db)):
 
 
 @router.post("/energy-balance")
-def import_energy_balance(payload: EnergyBalanceIn, db: Session = Depends(get_db)):
+def import_energy_balance(payload: EnergyBalanceIn, db: Session = Depends(get_db), admin=Depends(require_admin)):
     """Importe un bilan énergétique = lot d'indicateurs pour un territoire."""
     from app.models.indicator import Indicator
     from app.models.territory import Territory

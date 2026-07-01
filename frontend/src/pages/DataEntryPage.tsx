@@ -25,7 +25,21 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+import { useAuthStore as _useAuth } from "@/store/useAuthStore";
+
 export default function DataEntryPage() {
+  const _isAdmin = _useAuth((s) => s.user?.role === "admin");
+  if (!_isAdmin) {
+    return (
+      <div className="p-8 text-center">
+        <p className="text-lg font-medium">Accès réservé aux administrateurs</p>
+        <p className="mt-2 text-sm text-slate-400">
+          Seuls les administrateurs peuvent ajouter ou modifier des données.
+          Votre compte est en consultation seule.
+        </p>
+      </div>
+    );
+  }
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("territory");
   const setActiveTerritory = useAppStore((s) => s.setActiveTerritory);

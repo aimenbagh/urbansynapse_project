@@ -8,3 +8,5 @@ from app.models.indicator import Indicator, Scenario        # noqa
 from app.models.user import User                            # noqa
 
 __all__ = ["Territory", "Zone", "Building", "Indicator", "Scenario", "User"]
+
+from app.models.document import Document  # noqa

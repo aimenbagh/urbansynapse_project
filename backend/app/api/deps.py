@@ -1,4 +1,5 @@
-"""Dépendances d'authentification FastAPI."""
+"""Dépendances d'authentification et d'autorisation FastAPI."""
+from datetime import datetime
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -19,8 +20,14 @@ def get_current_user(token: str = Depends(oauth2_scheme),
             headers={"WWW-Authenticate": "Bearer"},
         )
     user = db.query(User).filter(User.email == email).first()
-    if not user or not user.is_active:
-        raise HTTPException(status_code=401, detail="Utilisateur introuvable ou inactif")
+    if not user:
+        raise HTTPException(status_code=401, detail="Utilisateur introuvable")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Compte bloqué. Contactez un administrateur.")
+    if user.suspended_until and user.suspended_until > datetime.utcnow():
+        raise HTTPException(
+            status_code=403,
+            detail=f"Compte suspendu jusqu'au {user.suspended_until.strftime('%d/%m/%Y %H:%M')}.")
     return user
 
 

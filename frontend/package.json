@@ -12,16 +12,19 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.56.2",
+    "@turf/turf": "^7.1.0",
     "axios": "^1.7.7",
     "clsx": "^2.1.1",
     "jspdf": "^2.5.2",
     "lucide-react": "^0.445.0",
+    "mammoth": "^1.8.0",
     "maplibre-gl": "^4.7.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-map-gl": "^7.1.7",
     "react-router-dom": "^6.26.2",
     "recharts": "^2.15.4",
+    "xlsx": "^0.18.5",
     "zustand": "^4.5.5"
   },
   "devDependencies": {
@@ -32,7 +35,7 @@
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",
     "tailwindcss": "3.4.17",
-    "typescript": "5.6.3",
+    "typescript": "^5.6.3",
     "vite": "5.4.11",
     "vitest": "2.1.8"
   }
