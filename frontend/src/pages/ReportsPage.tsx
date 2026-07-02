@@ -1,106 +1,129 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { FileText, Download, Calendar, Loader2, Sparkles, CheckCircle2 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  FileText, Plus, Eye, Download, Trash2, X, Loader2, Zap, ShieldAlert, Users,
+} from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
 import Panel from "@/components/ui/Panel";
-import { downloadReportPDF, fetchRecommendations } from "@/api/planning";
-import { fetchTerritoryStats } from "@/api/territories";
+import {
+  fetchReports, generateReport, deleteReport, fetchReportBlob, type SavedReport,
+} from "@/api/reports";
+import { fetchTerritories } from "@/api/territories";
 import { useAppStore } from "@/store/useAppStore";
 
-const PRIORITY_STYLE: Record<string, string> = {
-  Haute: "bg-rose-500/15 text-rose-300",
-  Moyenne: "bg-amber-500/15 text-amber-300",
-  Basse: "bg-emerald-500/15 text-emerald-300",
-};
-
 export default function ReportsPage() {
-  const territoryId = useAppStore((s) => s.activeTerritoryId);
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
+  const qc = useQueryClient();
+  const activeTerritoryId = useAppStore((s) => s.activeTerritoryId);
+  const { data: reports, isLoading } = useQuery({ queryKey: ["reports"], queryFn: fetchReports });
+  const { data: territories } = useQuery({ queryKey: ["territories"], queryFn: fetchTerritories });
+  const [viewing, setViewing] = useState<{ report: SavedReport; url: string } | null>(null);
+  const [loadingView, setLoadingView] = useState(false);
 
-  const { data: stats } = useQuery({
-    queryKey: ["stats", territoryId],
-    queryFn: () => fetchTerritoryStats(territoryId),
+  const gen = useMutation({
+    mutationFn: () => generateReport(activeTerritoryId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["reports"] }),
+    onError: () => alert("Échec de la génération. Vérifie que le backend est lancé."),
   });
-  const { data: recommendations } = useQuery({
-    queryKey: ["recommendations", territoryId],
-    queryFn: () => fetchRecommendations(territoryId),
+  const del = useMutation({
+    mutationFn: (id: number) => deleteReport(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["reports"] }),
   });
 
-  const handleDownload = async () => {
-    setBusy(true); setDone(false);
+  const activeName = territories?.find((t: any) => t.id === activeTerritoryId)?.name ?? "…";
+
+  const view = async (r: SavedReport) => {
+    setLoadingView(true);
     try {
-      await downloadReportPDF(territoryId, stats?.name ?? "territoire");
-      setDone(true);
-      setTimeout(() => setDone(false), 3000);
-    } catch {
-      alert("Erreur : le backend est-il lancé sur le port 8000 ?");
-    } finally {
-      setBusy(false);
-    }
+      const blob = await fetchReportBlob(r.id);
+      setViewing({ report: r, url: URL.createObjectURL(blob) });
+    } catch { alert("Impossible d'afficher le rapport."); }
+    finally { setLoadingView(false); }
   };
-
-  const reports = [
-    { title: `Synthèse territoriale — ${stats?.name ?? "…"}`, date: "Juin 2026", type: "Analyse globale" },
-    { title: "Performance énergétique du bâti", date: "Mai 2026", type: "Énergie" },
-    { title: "Évaluation des risques naturels", date: "Avril 2026", type: "Résilience" },
-    { title: "Scénarios de mobilité durable", date: "Mars 2026", type: "Mobilité" },
-  ];
+  const download = async (r: SavedReport) => {
+    const blob = await fetchReportBlob(r.id);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `rapport_${r.territory_name}.pdf`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  };
+  const closeView = () => { if (viewing) URL.revokeObjectURL(viewing.url); setViewing(null); };
 
   return (
     <div>
-      <PageHeader
-        title="Rapports"
-        subtitle="Synthèses décisionnelles générées par IA"
+      <PageHeader title="Rapports" subtitle="Historique des rapports générés avec les données réelles"
         action={
-          <button onClick={handleDownload} disabled={busy}
-            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/80 disabled:opacity-60">
-            {busy ? <Loader2 size={16} className="animate-spin" /> : done ? <CheckCircle2 size={16} /> : <FileText size={16} />}
-            {busy ? "Génération…" : done ? "Téléchargé !" : "Nouveau rapport"}
+          <button onClick={() => gen.mutate()} disabled={gen.isPending}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-60">
+            {gen.isPending ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+            {gen.isPending ? "Génération…" : `Nouveau rapport (${activeName})`}
           </button>
-        }
-      />
+        } />
 
-      {/* Aperçu des recommandations qui seront incluses */}
-      <Panel className="mb-6">
-        <div className="mb-3 flex items-center gap-2">
-          <Sparkles className="text-accent-2" size={18} />
-          <h2 className="font-semibold">Recommandations incluses dans le rapport</h2>
-        </div>
-        {!recommendations?.length && (
-          <p className="text-sm text-slate-500">Aucune recommandation pour ce territoire.</p>
-        )}
-        <div className="grid gap-2 md:grid-cols-2">
-          {recommendations?.map((r, i) => (
-            <div key={i} className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-sm">
-              <span className={`rounded-full px-2 py-0.5 text-xs ${PRIORITY_STYLE[r.priority]}`}>{r.priority}</span>
-              <span className="text-slate-300">{r.title}</span>
-            </div>
-          ))}
-        </div>
-      </Panel>
-
-      <div className="space-y-3">
-        {reports.map((r) => (
-          <Panel key={r.title}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="rounded-lg bg-white/5 p-3"><FileText className="text-primary" /></div>
-                <div>
-                  <h3 className="font-medium">{r.title}</h3>
-                  <p className="flex items-center gap-2 text-sm text-slate-400">
-                    <Calendar size={12} /> {r.date} · {r.type}
-                  </p>
+      {isLoading ? (
+        <p className="text-slate-400">Chargement…</p>
+      ) : !reports?.length ? (
+        <Panel><div className="py-10 text-center">
+          <FileText className="mx-auto mb-3 text-slate-600" size={40} />
+          <p className="text-slate-400">Aucun rapport généré pour le moment.</p>
+          <p className="mt-1 text-sm text-slate-500">Clique « Nouveau rapport » pour en générer un avec les données réelles de la wilaya active.</p>
+        </div></Panel>
+      ) : (
+        <div className="space-y-3">
+          {reports.map((r) => (
+            <Panel key={r.id}>
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/15">
+                    <FileText className="text-primary" size={22} />
+                  </div>
+                  <div>
+                    <h3 className="font-medium">{r.title}</h3>
+                    <div className="mt-1 flex flex-wrap gap-3 text-xs text-slate-400">
+                      {r.population != null && <span className="flex items-center gap-1"><Users size={12} /> {r.population.toLocaleString()} hab.</span>}
+                      {r.energy_performance != null && <span className="flex items-center gap-1"><Zap size={12} /> {r.energy_performance}%</span>}
+                      {r.risk_global != null && <span className="flex items-center gap-1"><ShieldAlert size={12} /> risque {r.risk_global}/100</span>}
+                      <span>· {(r.size_bytes / 1024).toFixed(0)} Ko</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => view(r)} disabled={loadingView} title="Afficher"
+                    className="flex items-center gap-1 rounded-lg bg-white/5 px-3 py-1.5 text-sm hover:bg-white/10">
+                    <Eye size={14} /> Afficher
+                  </button>
+                  <button onClick={() => download(r)} title="Télécharger"
+                    className="flex items-center gap-1 rounded-lg bg-white/5 px-3 py-1.5 text-sm hover:bg-white/10">
+                    <Download size={14} /> Télécharger
+                  </button>
+                  <button onClick={() => { if (confirm("Supprimer ce rapport ?")) del.mutate(r.id); }} title="Supprimer"
+                    className="rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-rose-400">
+                    <Trash2 size={16} />
+                  </button>
                 </div>
               </div>
-              <button onClick={handleDownload} disabled={busy}
-                className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-sm hover:bg-white/10 disabled:opacity-60">
-                {busy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Exporter
-              </button>
+            </Panel>
+          ))}
+        </div>
+      )}
+
+      {/* Visionneuse PDF intégrée */}
+      {viewing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={closeView}>
+          <div className="flex h-[90vh] w-full max-w-5xl flex-col rounded-xl bg-navy-light shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
+              <h3 className="font-semibold">{viewing.report.title}</h3>
+              <div className="flex items-center gap-2">
+                <button onClick={() => download(viewing.report)} className="flex items-center gap-1 rounded-lg bg-white/5 px-3 py-1.5 text-sm hover:bg-white/10">
+                  <Download size={14} /> Télécharger
+                </button>
+                <button onClick={closeView} className="rounded-lg bg-white/5 p-1.5 hover:bg-white/10"><X size={18} /></button>
+              </div>
             </div>
-          </Panel>
-        ))}
-      </div>
+            <iframe src={viewing.url} title={viewing.report.title} className="flex-1 rounded-b-xl bg-white" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

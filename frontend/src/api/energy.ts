@@ -42,3 +42,18 @@ export const simulateTerritoryRetrofit = async (
   );
   return data;
 };
+
+export interface EnergyDist {
+  territory_id: number; territory_name: string; wilaya_code: string;
+  distribution: { classe: string; count: number }[];
+  total_buildings: number; avg_kwh_m2: number; performance: number; source: string;
+  dairas: {
+    name: string; performance: number; total_buildings: number;
+    distribution: { classe: string; count: number }[];
+    communes: { name: string; performance: number; avg_kwh_m2: number; total_buildings: number; distribution: { classe: string; count: number }[] }[];
+  }[];
+  has_detail: boolean;
+}
+
+export const fetchEnergyDistribution = async (territoryId: number): Promise<EnergyDist> =>
+  (await apiClient.get(`/energy/${territoryId}/distribution`)).data;

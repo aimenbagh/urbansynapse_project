@@ -1,13 +1,15 @@
 import { useNavigate } from "react-router-dom";
 import {
   Database, BrainCircuit, GitBranch, ClipboardCheck, Check, ArrowRight,
-  ArrowLeft, RotateCcw, Play, Droplets, Flame, Building2, Zap,
+  ArrowLeft, RotateCcw, Play, Droplets, Flame, Building2, Zap, Loader2, Sparkles, FileDown,
 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
 import Panel from "@/components/ui/Panel";
 import { useWizardStore } from "@/store/useWizardStore";
 import { useAppStore } from "@/store/useAppStore";
-import { downloadReportPDF } from "@/api/planning";
+import { downloadReportPDF, fetchRecommendations } from "@/api/planning";
+import { fetchProfile } from "@/api/profile";
+import { fetchScenarios } from "@/api/foresight";
 import { fetchTerritories } from "@/api/territories";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -54,20 +56,87 @@ export default function AboutPage() {
   const navigate = useNavigate();
   const activeTerritoryId = useAppStore((s) => s.activeTerritoryId);
   const { data: territories } = useQuery({ queryKey: ["territories"], queryFn: fetchTerritories });
-  const [genBusy, setGenBusy] = useState(false);
-  const [genDone, setGenDone] = useState(false);
 
-  const generateReport = async () => {
-    setGenBusy(true); setGenDone(false);
-    const name = territories?.find((t: any) => t.id === activeTerritoryId)?.name ?? "territoire";
-    try {
-      // Génère et télécharge le rapport PDF via le backend
+  // Résultats et état d'exécution par étape
+  const [results, setResults] = useState<Record<number, string>>({});
+  const [running, setRunning] = useState<number | null>(null);
+  const [autoRunning, setAutoRunning] = useState(false);
+
+  const territoryName = () =>
+    territories?.find((t: any) => t.id === activeTerritoryId)?.name ?? "territoire";
+
+  // Exécute réellement l'action d'une étape et renvoie un résumé texte
+  const runStep = async (n: number): Promise<string> => {
+    const name = territoryName();
+    if (n === 1) {
+      // Acquisition : vérifier les données disponibles du territoire
+      const p = await fetchProfile(activeTerritoryId);
+      return `Données de ${name} chargées : population ${p.population.toLocaleString()}, ` +
+        `performance énergétique ${p.energy_performance}%, indice de risque ${p.risk.global}/100.`;
+    }
+    if (n === 2) {
+      // Analyse : profil + recommandations
+      const [p, recs] = await Promise.all([
+        fetchProfile(activeTerritoryId),
+        fetchRecommendations(activeTerritoryId).catch(() => ({ recommendations: [] } as any)),
+      ]);
+      const nb = recs?.recommendations?.length ?? 0;
+      return `Analyse de ${name} : ${p.analysis} — ${nb} recommandation(s) générée(s).`;
+    }
+    if (n === 3) {
+      // Scénarios prospectifs
+      const sc = await fetchScenarios(activeTerritoryId, 10);
+      const items = (sc as any)?.scenarios ?? [];
+      if (items.length) {
+        const lines = items.map((x: any) =>
+          `• ${x.name ?? x.label ?? "Scénario"} : ${x.description ?? x.summary ?? ""}`).join("\n");
+        return `${items.length} scénario(s) d'aménagement générés pour ${name} :\n${lines}`;
+      }
+      return `Scénarios prospectifs générés pour ${name}.`;
+    }
+    if (n === 4) {
+      // Rapport décisionnel PDF
       await downloadReportPDF(activeTerritoryId, name);
-      setGenDone(true); setTimeout(() => setGenDone(false), 3000);
-    } catch {
-      alert("Impossible de générer le rapport. Vérifie que le backend est lancé (port 8000).");
-    } finally { setGenBusy(false); }
+      return `Rapport décisionnel PDF de ${name} téléchargé.`;
+    }
+    return "";
   };
+
+  // Lance une étape (bouton individuel)
+  const handleRun = async (n: number) => {
+    setRunning(n);
+    try {
+      const res = await runStep(n);
+      setResults((r) => ({ ...r, [n]: res }));
+      markDone(n);
+    } catch {
+      setResults((r) => ({ ...r, [n]: "⚠ Échec — vérifie que le backend est lancé (port 8000)." }));
+    } finally {
+      setRunning(null);
+    }
+  };
+
+  // Lance les 4 étapes automatiquement, l'une après l'autre
+  const runAll = async () => {
+    setAutoRunning(true);
+    for (let n = 1; n <= 4; n++) {
+      setCurrent(n);
+      setRunning(n);
+      try {
+        const res = await runStep(n);
+        setResults((r) => ({ ...r, [n]: res }));
+        markDone(n);
+      } catch {
+        setResults((r) => ({ ...r, [n]: "⚠ Échec — backend injoignable." }));
+      } finally {
+        setRunning(null);
+      }
+    }
+    setAutoRunning(false);
+  };
+
+  // (compat) ancien nom utilisé par le bouton d'action
+  const generateReport = () => handleRun(4);
   const { completed, current, markDone, setCurrent, reset } = useWizardStore();
   const step = STEPS[current - 1];
   const progress = (completed.length / STEPS.length) * 100;
@@ -77,10 +146,17 @@ export default function AboutPage() {
       <PageHeader title="Assistant UrbanSynapse AI"
         subtitle="Un processus guidé en 4 étapes, de la donnée à la décision"
         action={
-          <button onClick={reset}
-            className="flex items-center gap-1 rounded-lg bg-white/5 px-3 py-1.5 text-sm text-slate-400 hover:bg-white/10">
-            <RotateCcw size={14} /> Recommencer
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={runAll} disabled={autoRunning}
+              className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-primary to-accent-2 px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60">
+              {autoRunning ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+              {autoRunning ? "Exécution en cours…" : "Générer les 4 étapes automatiquement"}
+            </button>
+            <button onClick={reset}
+              className="flex items-center gap-1 rounded-lg bg-white/5 px-3 py-1.5 text-sm text-slate-400 hover:bg-white/10">
+              <RotateCcw size={14} /> Recommencer
+            </button>
+          </div>
         } />
 
       {/* Problématique (contexte) */}
@@ -153,24 +229,28 @@ export default function AboutPage() {
 
             {/* Actions */}
             <div className="flex flex-wrap items-center gap-3">
-              <button
-                onClick={() => (step as any).isReport ? generateReport() : navigate(step.route)}
-                disabled={(step as any).isReport && genBusy}
+              <button onClick={() => handleRun(step.n)} disabled={running === step.n || autoRunning}
                 className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white ${step.btn} disabled:opacity-60`}>
-                <Play size={15} />
-                {(step as any).isReport
-                  ? (genBusy ? "Génération…" : genDone ? "Rapport téléchargé !" : step.action)
-                  : step.action}
+                {running === step.n ? <Loader2 size={15} className="animate-spin" /> :
+                  step.n === 4 ? <FileDown size={15} /> : <Play size={15} />}
+                {running === step.n ? "Exécution…" : step.action}
               </button>
-              {!completed.includes(step.n) ? (
-                <button onClick={() => markDone(step.n)}
-                  className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500">
-                  <Check size={15} /> Marquer cette étape comme terminée
-                </button>
-              ) : (
-                <span className="flex items-center gap-1 text-sm text-emerald-400"><Check size={15} /> Étape terminée</span>
+              <button onClick={() => navigate(step.route)}
+                className="flex items-center gap-2 rounded-lg bg-white/5 px-4 py-2 text-sm text-slate-300 hover:bg-white/10">
+                Ouvrir la page complète
+              </button>
+              {completed.includes(step.n) && (
+                <span className="flex items-center gap-1 text-sm text-emerald-400"><Check size={15} /> Terminée</span>
               )}
             </div>
+
+            {/* Résultat de l'exécution */}
+            {results[step.n] && (
+              <div className="mt-4 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
+                <p className="mb-1 text-xs font-medium text-emerald-400">Résultat</p>
+                <p className="whitespace-pre-line text-sm text-slate-300">{results[step.n]}</p>
+              </div>
+            )}
           </div>
         </div>
 

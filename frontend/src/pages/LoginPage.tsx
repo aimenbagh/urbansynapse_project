@@ -86,11 +86,7 @@ export default function LoginPage() {
             {mutation.isPending ? "Connexion…" : mode === "login" ? "Se connecter" : "Créer le compte"}
           </button>
 
-          {mode === "login" && (
-            <p className="mt-4 text-center text-xs text-slate-500">
-              Compte de démonstration : admin@urbansynapse.ai / admin123
-            </p>
-          )}
+          
         </div>
       </div>
     </div>

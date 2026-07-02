@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X, Download, Loader2 } from "lucide-react";
+import { X, Loader2 } from "lucide-react";
 import { fetchDocumentBlob, type DocMeta } from "@/api/documents";
 
 export default function DocumentViewer({ doc, onClose }: { doc: DocMeta; onClose: () => void }) {
@@ -39,14 +39,6 @@ export default function DocumentViewer({ doc, onClose }: { doc: DocMeta; onClose
     return () => { if (revoke) URL.revokeObjectURL(revoke); };
   }, [doc]);
 
-  const download = async () => {
-    const blob = await fetchDocumentBlob(doc.id);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = doc.filename;
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
-  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
@@ -55,25 +47,21 @@ export default function DocumentViewer({ doc, onClose }: { doc: DocMeta; onClose
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
           <div>
             <h3 className="font-semibold">{doc.title}</h3>
-            <p className="text-xs text-slate-400">{doc.filename} · {(doc.size_bytes / 1024).toFixed(0)} Ko</p>
+            <p className="text-xs text-slate-400">{doc.filename} · {(doc.size_bytes / 1024).toFixed(0)} Ko · Lecture seule</p>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={download} className="flex items-center gap-1 rounded-lg bg-white/5 px-3 py-1.5 text-sm hover:bg-white/10">
-              <Download size={14} /> Télécharger
-            </button>
             <button onClick={onClose} className="rounded-lg bg-white/5 p-1.5 hover:bg-white/10"><X size={18} /></button>
           </div>
         </div>
-        <div className="flex-1 overflow-auto bg-white">
+        <div className="flex-1 overflow-auto bg-white" onContextMenu={(e) => e.preventDefault()}>
           {loading && (
             <div className="flex h-full items-center justify-center text-slate-500">
               <Loader2 className="animate-spin" /> <span className="ml-2">Chargement…</span>
             </div>
           )}
-          {error && <div className="p-8 text-center text-rose-600">{error}
-            <button onClick={download} className="mt-3 mx-auto block rounded bg-primary px-3 py-1.5 text-white">Télécharger le fichier</button></div>}
+          {error && <div className="p-8 text-center text-rose-600">{error}</div>}
           {!loading && !error && doc.file_type === "pdf" && (
-            <iframe src={pdfUrl} title={doc.title} className="h-full w-full" />
+            <iframe src={pdfUrl + "#toolbar=0&navpanes=0"} title={doc.title} className="h-full w-full" />
           )}
           {!loading && !error && doc.file_type === "word" && (
             <div className="prose mx-auto max-w-3xl p-8 text-slate-800" dangerouslySetInnerHTML={{ __html: html }} />

@@ -26,3 +26,6 @@ export const unblockUser = async (id: number) =>
 
 export const deleteUser = async (id: number) =>
   (await apiClient.delete(`/users/${id}`)).data;
+
+export const changeUserRole = async (id: number, role: string) =>
+  (await apiClient.post(`/users/${id}/role`, { role })).data;

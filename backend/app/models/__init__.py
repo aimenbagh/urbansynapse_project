@@ -10,3 +10,5 @@ from app.models.user import User                            # noqa
 __all__ = ["Territory", "Zone", "Building", "Indicator", "Scenario", "User"]
 
 from app.models.document import Document  # noqa
+
+from app.models.report import Report  # noqa

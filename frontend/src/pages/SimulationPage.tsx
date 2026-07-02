@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, BarChart3, Sparkles } from "lucide-react";
+import { Plus, Trash2, BarChart3, Sparkles, Shuffle, X } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
 import Panel from "@/components/ui/Panel";
 import {
@@ -32,6 +32,7 @@ export default function SimulationPage() {
   const territoryId = useAppStore((st) => st.activeTerritoryId);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [detail, setDetail] = useState<any | null>(null);
   const [params, setParams] = useState<Record<string, number>>(
     Object.fromEntries(CRITERIA.map((c) => [c.key, 50]))
   );
@@ -58,6 +59,16 @@ export default function SimulationPage() {
   const applyPreset = (preset: string) => {
     setName(preset);
     setParams(PRESETS[preset]);
+  };
+
+  // Simulation aléatoire : remplit tous les curseurs avec des valeurs au hasard
+  const randomSimulation = () => {
+    const rnd = () => Math.floor(Math.random() * 81) + 15; // 15..95
+    const randomParams: Record<string, number> = {};
+    CRITERIA.forEach((c) => { randomParams[c.key] = rnd(); });
+    setParams(randomParams);
+    if (!name.trim()) setName(`Scénario aléatoire ${Math.floor(Math.random() * 900 + 100)}`);
+    if (!description.trim()) setDescription("Scénario généré aléatoirement");
   };
 
   const comparison =
@@ -107,6 +118,12 @@ export default function SimulationPage() {
                 {p}
               </button>
             ))}
+            <button
+              onClick={randomSimulation}
+              className="flex items-center gap-1 rounded-full bg-accent-2/20 px-3 py-1 text-xs text-accent-2 hover:bg-accent-2/30"
+            >
+              <Shuffle size={12} /> Aléatoire
+            </button>
           </div>
 
           <div className="space-y-3">
@@ -172,11 +189,13 @@ export default function SimulationPage() {
         )}
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
           {scenarios?.map((s) => (
-            <div key={s.id} className="rounded-lg border border-white/5 bg-white/5 p-4">
+            <div key={s.id}
+              onClick={() => setDetail(s)}
+              className="cursor-pointer rounded-lg border border-white/5 bg-white/5 p-4 transition hover:border-primary/40">
               <div className="flex items-start justify-between">
                 <BarChart3 size={18} className="text-primary" />
                 <button
-                  onClick={() => deleteMut.mutate(s.id)}
+                  onClick={(e) => { e.stopPropagation(); deleteMut.mutate(s.id); }}
                   className="text-slate-500 hover:text-rose-400"
                   title="Supprimer"
                 >
@@ -202,6 +221,52 @@ export default function SimulationPage() {
           ))}
         </div>
       </Panel>
+
+      {/* Modale de détail d'un scénario */}
+      {detail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setDetail(null)}>
+          <div className="w-full max-w-md rounded-xl bg-navy-light p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-1 flex items-start justify-between">
+              <h3 className="text-lg font-semibold">{detail.name}</h3>
+              <button onClick={() => setDetail(null)} className="rounded-lg bg-white/5 p-1.5 hover:bg-white/10"><X size={18} /></button>
+            </div>
+            {detail.description && <p className="mb-4 text-sm text-slate-400">{detail.description}</p>}
+
+            {detail.performance != null && (
+              <div className="mb-4 rounded-lg bg-primary/10 p-3 text-center">
+                <p className="text-2xl font-bold text-primary">{detail.performance}%</p>
+                <p className="text-xs text-slate-400">Score de performance global</p>
+              </div>
+            )}
+
+            <p className="mb-2 text-xs font-medium text-slate-400">Détail des critères</p>
+            <div className="space-y-2.5">
+              {CRITERIA.map((c) => {
+                const val = detail.parameters?.[c.key];
+                if (val == null) return null;
+                return (
+                  <div key={c.key}>
+                    <div className="mb-1 flex justify-between text-sm">
+                      <span className="text-slate-300">{c.label}</span>
+                      <span className="font-medium">{val}</span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-white/10">
+                      <div className="h-1.5 rounded-full bg-primary" style={{ width: `${val}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+              {!detail.parameters && <p className="text-sm text-slate-500">Aucun détail de critère enregistré pour ce scénario.</p>}
+            </div>
+
+            <button
+              onClick={() => { setName(detail.name + " (copie)"); if (detail.parameters) setParams(detail.parameters); setDetail(null); }}
+              className="mt-5 w-full rounded-lg bg-white/5 px-4 py-2 text-sm text-slate-200 hover:bg-white/10">
+              Charger ces valeurs dans le simulateur
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

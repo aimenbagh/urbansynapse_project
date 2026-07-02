@@ -62,3 +62,15 @@ export const fetchStructuredPlan = async (territoryId: number, horizon = 10): Pr
   const { data } = await apiClient.post<StructuredPlan>(`/foresight/${territoryId}/structured-plan`, { horizon });
   return data;
 };
+
+export interface ForesightSubdivisions {
+  territory_id: number; territory_name: string; wilaya_code: string;
+  dairas: {
+    name: string; current: number; target: number; gain: number;
+    communes: { name: string; current: number; target: number; gain: number }[];
+  }[];
+  has_detail: boolean;
+}
+
+export const fetchForesightSubdivisions = async (territoryId: number): Promise<ForesightSubdivisions> =>
+  (await apiClient.get(`/foresight/${territoryId}/subdivisions`)).data;

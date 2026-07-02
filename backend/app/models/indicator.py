@@ -16,6 +16,7 @@ class Indicator(Base):
 class Scenario(Base):
     __tablename__ = "scenarios"
     id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, index=True, nullable=True)  # propriétaire
     territory_id = Column(Integer, ForeignKey("territories.id"))
     name = Column(String)
     description = Column(String)

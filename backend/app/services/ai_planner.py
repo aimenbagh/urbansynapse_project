@@ -18,10 +18,17 @@ MISTRAL_MODEL = "mistral-small-latest"
 
 
 def _build_prompt(territory: str, indicators: dict, forecast: dict,
-                  recommendations: list[dict], horizon: int) -> str:
+                  recommendations: list[dict], horizon: int,
+                  subdivisions: list = None) -> str:
     recs_txt = "\n".join(
         f"- [{r['priority']}] {r['title']} : {r['detail']}" for r in recommendations
     )
+    subs_txt = ""
+    if subdivisions:
+        noms = ", ".join(subdivisions[:12])
+        subs_txt = (f"\nLa wilaya comprend notamment les daïras suivantes : {noms}. "
+                    f"Dans ton plan, cite explicitement certaines de ces daïras/communes "
+                    f"en associant des actions précises à chacune (là où c'est pertinent).\n")
     return (
         f"Tu es un expert en planification urbaine durable en Algérie. "
         f"Rédige un plan d'action prospectif pour le territoire de {territory}, "
@@ -30,7 +37,8 @@ def _build_prompt(territory: str, indicators: dict, forecast: dict,
         f"Projection énergétique (modèle ML) : consommation passant de "
         f"{forecast['history'][-1]['value']} à {forecast['forecast'][-1]['value']} GWh "
         f"(croissance {forecast.get('historical_cagr_pct')}%/an).\n"
-        f"Diagnostic :\n{recs_txt}\n\n"
+        f"Diagnostic :\n{recs_txt}\n"
+        f"{subs_txt}\n"
         f"Structure le plan en 3 phases (court, moyen, long terme), avec pour "
         f"chaque phase des actions concrètes, des objectifs chiffrés et les "
         f"leviers (rénovation du bâti, renouvelables, mobilité). Sois concret "
@@ -94,7 +102,8 @@ def _fallback_plan(territory: str, indicators: dict, forecast: dict,
 
 
 def generate_plan(territory: str, indicators: dict, forecast: dict,
-                  recommendations: list[dict], horizon: int = 10) -> dict:
+                  recommendations: list[dict], horizon: int = 10,
+                  subdivisions: list = None) -> dict:
     """Retourne un plan prospectif (IA générative si dispo, sinon repli)."""
     try:
         from app.core.config import settings
@@ -106,7 +115,7 @@ def generate_plan(territory: str, indicators: dict, forecast: dict,
                 "plan": _fallback_plan(territory, indicators, forecast, recommendations, horizon)}
 
     try:
-        prompt = _build_prompt(territory, indicators, forecast, recommendations, horizon)
+        prompt = _build_prompt(territory, indicators, forecast, recommendations, horizon, subdivisions)
         resp = httpx.post(
             MISTRAL_API_URL,
             headers={"Authorization": f"Bearer {api_key}",

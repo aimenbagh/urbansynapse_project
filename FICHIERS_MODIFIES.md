@@ -1,66 +1,50 @@
-# Erreur Vercel : "react-scripts: command not found"
+# Isolation par utilisateur (scénarios + rapports) + détail des critères
 
 ═══════════════════════════════════════════════════════════════
-## LA CAUSE
+## 1. CHAQUE UTILISATEUR A SES PROPRES SCÉNARIOS ET RAPPORTS
 ═══════════════════════════════════════════════════════════════
-Vercel lance "react-scripts build" (commande de Create React App).
-MAIS ton projet utilise VITE, pas react-scripts.
-→ Vercel a un mauvais réglage de build qui écrase ton vercel.json.
+AVANT : tous les utilisateurs voyaient les MÊMES scénarios et rapports (mélangés).
+MAINTENANT : chaque utilisateur ne voit et ne gère QUE les siens.
 
-═══════════════════════════════════════════════════════════════
-## LA SOLUTION (dans l'interface Vercel)
-═══════════════════════════════════════════════════════════════
-1. Vercel → ton projet → onglet SETTINGS
-2. Section "Build & Development Settings"
-3. Corrige ces 4 champs :
+- Un scénario/rapport appartient à son créateur (user_id).
+- La liste ne montre que ceux de l'utilisateur connecté.
+- On ne peut ni voir, ni supprimer ceux d'un autre (404 sinon).
 
-   Framework Preset  = Vite
-                       (PAS "Create React App")
-
-   Build Command     = npm run build
-                       (désactive l'Override, ou mets exactement ça)
-                       (SURTOUT PAS "react-scripts build")
-
-   Output Directory  = dist
-                       (PAS "build")
-
-   Install Command   = npm install
-                       (par défaut, laisse tel quel)
-
-4. Clique "Save".
-5. Onglet Deployments → dernier déploiement → "..." → Redeploy
-   (décoche "Use existing Build Cache").
+Testé : admin et user créent chacun un scénario → chacun ne voit que le sien.
 
 ═══════════════════════════════════════════════════════════════
-## VÉRIFIE AUSSI : Root Directory
+## 2. "DÉTAIL DES CRITÈRES" QUI NE S'AFFICHAIT PAS
 ═══════════════════════════════════════════════════════════════
-Settings → General (ou Build settings) → "Root Directory"
-   Root Directory = frontend
-Ton frontend est dans le sous-dossier "frontend", Vercel doit le savoir.
+Le scénario "Mobilité verte" de ta capture était un ANCIEN scénario, créé
+avant que le détail des critères soit enregistré. Son message "Aucun détail"
+est donc normal.
+Les NOUVEAUX scénarios (créés après cette mise à jour) affichent bien les
+6 critères. La recréation de la base (ci-dessous) enlève les anciens.
 
 ═══════════════════════════════════════════════════════════════
-## VÉRIFIE QUE vercel.json EST SUR GITHUB
+## FICHIERS
 ═══════════════════════════════════════════════════════════════
-Ouvre ton repo GitHub → dossier "frontend".
-Tu DOIS y voir "vercel.json". S'il n'y est pas :
-    git add frontend/vercel.json
-    git commit -m "Ajout vercel.json"
-    git push
-
-Contenu attendu de frontend/vercel.json :
-{
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
-  "framework": "vite",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
-}
+- `backend/app/models/indicator.py` — Scenario + user_id
+- `backend/app/models/report.py` — Report + user_id
+- `backend/app/api/v1/endpoints/scenarios.py` — filtre par utilisateur
+- `backend/app/api/v1/endpoints/reports.py` — filtre par utilisateur
 
 ═══════════════════════════════════════════════════════════════
-## POURQUOI ÇA ARRIVE
+## APRÈS COPIE — RECRÉE LA BASE (nouvelles colonnes user_id)
 ═══════════════════════════════════════════════════════════════
-Quand tu as importé le projet, Vercel a peut-être détecté (à tort) Create
-React App, ou tu as choisi ce preset. Une fois le Framework mis sur "Vite"
-et le Build Command corrigé, le déploiement passera.
+    cd backend
+    del urbansynapse.db
+    .venv\Scripts\python.exe -m scripts.init_db
+    .venv\Scripts\python.exe -m scripts.seed_documents   (si tu veux les documents)
+    .venv\Scripts\python.exe -m uvicorn app.main:app --reload
 
-Ton package.json est CORRECT (build = "tsc -b && vite build"), le problème
-est 100% dans les réglages Vercel.
+(La recréation est nécessaire car on a ajouté la colonne user_id. Elle
+supprime aussi les anciens scénarios sans détail.)
+
+ESSAYE :
+- Connecte-toi en admin → crée un scénario → clique-le → détails OK.
+- Connecte-toi en user → tu ne vois PAS les scénarios de l'admin, seulement
+  les tiens. Pareil pour les rapports.
+
+Vérifié : isolation OK (chacun voit les siens), détail des critères OK sur les
+nouveaux, 3 tests backend OK.

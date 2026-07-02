@@ -9,6 +9,8 @@ import {
 } from "@/api/energy";
 import { fetchBuildings } from "@/api/territories";
 import { useAppStore } from "@/store/useAppStore";
+import { fetchEnergyDistribution } from "@/api/energy";
+import { ChevronRight, ChevronDown, MapPin, BarChart3 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
@@ -31,6 +33,14 @@ export default function EnergyPage() {
   const [surface, setSurface] = useState(100);
   const [energyClass, setEnergyClass] = useState("E");
   const [measures, setMeasures] = useState<string[]>(["insulation"]);
+
+  const { data: energyDist } = useQuery({
+    queryKey: ["energy-dist", territoryId],
+    queryFn: () => fetchEnergyDistribution(territoryId),
+    retry: 1,
+  });
+  const [openDaira, setOpenDaira] = useState<string | null>(null);
+  const [selected, setSelected] = useState<{ label: string; dist: any[] } | null>(null);
 
   const { data: buildings } = useQuery({
     queryKey: ["buildings", territoryId],
@@ -55,10 +65,9 @@ export default function EnergyPage() {
     setMeasures((m) => (m.includes(id) ? m.filter((x) => x !== id) : [...m, id]));
 
   // Distribution des classes énergétiques du parc
-  const distribution = CLASSES.map((c) => ({
-    classe: c,
-    count: buildings?.filter((b) => b.energy_class === c).length ?? 0,
-  }));
+  const wilayaDist = energyDist?.distribution ?? CLASSES.map((c) => ({ classe: c, count: 0 }));
+  const distribution = selected?.dist ?? wilayaDist;
+  const distLabel = selected?.label ?? `Wilaya de ${energyDist?.territory_name ?? ""}`;
 
   return (
     <div>
@@ -67,8 +76,23 @@ export default function EnergyPage() {
         subtitle="Parc de bâtiments et simulation de rénovation énergétique"
       />
 
-      {/* Distribution du parc */}
-      <Panel title={`Distribution des classes énergétiques (${buildings?.length ?? 0} bâtiments)`} className="mb-6">
+      {/* Distribution du parc (graphe par niveau) */}
+      <Panel className="mb-6">
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="font-semibold">
+            Distribution des classes énergétiques — {distLabel}
+            <span className="ml-2 text-xs text-slate-500">
+              ({distribution.reduce((a: number, d: any) => a + d.count, 0)} bâtiments
+              {energyDist?.source === "estimé" ? ", estimé" : ""})
+            </span>
+          </h3>
+          {selected && (
+            <button onClick={() => setSelected(null)}
+              className="rounded-lg bg-white/5 px-3 py-1 text-xs text-slate-300 hover:bg-white/10">
+              Revenir à la wilaya
+            </button>
+          )}
+        </div>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={distribution}>
             <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" />
@@ -76,11 +100,56 @@ export default function EnergyPage() {
             <YAxis stroke="#94a3b8" fontSize={12} allowDecimals={false} />
             <Tooltip contentStyle={{ background: "#101d36", border: "none", borderRadius: 8 }} />
             <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-              {distribution.map((d) => <Cell key={d.classe} fill={CLASS_COLOR[d.classe]} />)}
+              {distribution.map((d: any) => <Cell key={d.classe} fill={CLASS_COLOR[d.classe]} />)}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
       </Panel>
+
+      {/* Hiérarchie daïra → commune (performance + graphe par niveau) */}
+      {energyDist?.has_detail && (
+        <Panel title={`Performance énergétique par daïra et commune (${energyDist.dairas.length} daïras)`} className="mt-6">
+          <div className="space-y-2">
+            {energyDist.dairas.map((d) => {
+              const open = openDaira === d.name;
+              return (
+                <div key={d.name} className="rounded-lg border border-white/5">
+                  <div className="flex items-center justify-between px-4 py-3 hover:bg-white/5">
+                    <button onClick={() => setOpenDaira(open ? null : d.name)} className="flex flex-1 items-center gap-2 text-left">
+                      {open ? <ChevronDown size={16} className="text-slate-400" /> : <ChevronRight size={16} className="text-slate-400" />}
+                      <span className="font-medium">Daïra {d.name}</span>
+                      <span className="text-xs text-slate-500">({d.communes.length} communes · {d.total_buildings} bât.)</span>
+                    </button>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-slate-400">perf {d.performance}%</span>
+                      <button onClick={() => setSelected({ label: `Daïra ${d.name}`, dist: d.distribution })}
+                        className="flex items-center gap-1 rounded-lg bg-accent-2/15 px-2 py-1 text-xs text-accent-2 hover:bg-accent-2/25">
+                        <BarChart3 size={12} /> Graphe
+                      </button>
+                    </div>
+                  </div>
+                  {open && (
+                    <div className="border-t border-white/5 bg-black/20 px-4 py-2">
+                      {d.communes.map((cm) => (
+                        <div key={cm.name} className="flex items-center justify-between py-2 text-sm">
+                          <span className="flex items-center gap-2"><MapPin size={13} className="text-slate-500" /> {cm.name}</span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-slate-500">{cm.total_buildings} bât · {cm.avg_kwh_m2} kWh/m² · perf {cm.performance}%</span>
+                            <button onClick={() => setSelected({ label: `Commune ${cm.name}`, dist: cm.distribution })}
+                              className="flex items-center gap-1 rounded-lg bg-primary/15 px-2 py-1 text-xs text-primary hover:bg-primary/25">
+                              <BarChart3 size={12} /> Graphe
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel title="Simulateur de rénovation">

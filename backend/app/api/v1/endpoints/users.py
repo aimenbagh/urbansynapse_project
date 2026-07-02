@@ -75,6 +75,26 @@ def unsuspend_user(user_id: int, db: Session = Depends(get_db), admin=Depends(re
     return _public(u)
 
 
+class RolePayload(BaseModel):
+    role: str
+
+
+@router.post("/{user_id}/role")
+def change_role(user_id: int, payload: RolePayload,
+                db: Session = Depends(get_db), admin=Depends(require_admin)):
+    from app.models.user import User
+    u = db.get(User, user_id)
+    if not u:
+        raise HTTPException(404, "Utilisateur introuvable")
+    if payload.role not in ("admin", "user"):
+        raise HTTPException(400, "Rôle invalide (admin ou user)")
+    if u.id == admin.id and payload.role != "admin":
+        raise HTTPException(400, "Vous ne pouvez pas retirer votre propre rôle admin")
+    u.role = payload.role
+    db.commit(); db.refresh(u)
+    return _public(u)
+
+
 @router.post("/{user_id}/block")
 def block_user(user_id: int, db: Session = Depends(get_db), admin=Depends(require_admin)):
     from app.models.user import User

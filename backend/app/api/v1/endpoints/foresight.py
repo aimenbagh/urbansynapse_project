@@ -56,7 +56,14 @@ def plan(territory_id: int, payload: PlanRequest, db: Session = Depends(get_db))
     name, indicators, bdata = _territory_context(territory_id, db)
     fc = forecast_series(2025 + payload.horizon)
     recs = generate_recommendations(indicators, bdata)
-    result = generate_plan(name, indicators, fc, recs, payload.horizon)
+    # Daïras de la wilaya (pour que le plan IA les cite)
+    from app.data.admin_divisions import ADMIN_DIVISIONS
+    from app.models.territory import Territory as _T
+    _t = db.get(_T, territory_id)
+    _wc = (_t.wilaya_code or "").zfill(2) if _t else ""
+    _wd = ADMIN_DIVISIONS.get(_wc)
+    subdivisions = list(_wd["dairas"].keys()) if _wd else []
+    result = generate_plan(name, indicators, fc, recs, payload.horizon, subdivisions)
     return {
         "territory": name,
         "horizon": payload.horizon,
@@ -78,3 +85,51 @@ def structured_plan(territory_id: int, payload: PlanRequest, db: Session = Depen
     fc = forecast_series(2025 + payload.horizon)
     recs = generate_recommendations(indicators, bdata)
     return build_structured_plan(name, indicators, fc, recs, payload.horizon)
+
+
+@router.get("/{territory_id}/subdivisions")
+def foresight_subdivisions(territory_id: int, db: Session = Depends(get_db)):
+    """Liste des daïras/communes de la wilaya + récapitulatif prospectif par niveau."""
+    from app.models.territory import Territory
+    from app.data.admin_divisions import ADMIN_DIVISIONS
+    from app.data.energy_data import energy_distribution, estimate_buildings
+    import hashlib
+
+    t = db.get(Territory, territory_id)
+    if not t:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Territoire introuvable")
+
+    wcode = (t.wilaya_code or "").zfill(2)
+    wilaya_data = ADMIN_DIVISIONS.get(wcode)
+
+    def proj(seed: str, base_perf: float):
+        # projection de performance à horizon (amélioration progressive)
+        h = int(hashlib.md5(seed.encode()).hexdigest(), 16)
+        current = max(15, min(95, round(base_perf + (h % 11 - 5))))
+        target = min(98, current + 8 + (h % 10))  # objectif à ~10 ans
+        return current, target
+
+    try:
+        prof = territory_profile(territory_id, db)
+        base_perf = prof.get("energy_performance", 70)
+    except Exception:
+        base_perf = 70
+
+    dairas = []
+    if wilaya_data:
+        pop_per = (t.population or 0) / max(1, sum(len(cs) for cs in wilaya_data["dairas"].values()))
+        for dname, communes in wilaya_data["dairas"].items():
+            clist = []
+            for cname in communes:
+                cur, tgt = proj(f"{cname}-proj", base_perf)
+                clist.append({"name": cname, "current": cur, "target": tgt, "gain": tgt - cur})
+            davg_cur = round(sum(c["current"] for c in clist) / len(clist)) if clist else base_perf
+            davg_tgt = round(sum(c["target"] for c in clist) / len(clist)) if clist else base_perf
+            dairas.append({"name": dname, "current": davg_cur, "target": davg_tgt,
+                          "gain": davg_tgt - davg_cur, "communes": clist})
+
+    return {
+        "territory_id": t.id, "territory_name": t.name, "wilaya_code": wcode,
+        "dairas": dairas, "has_detail": len(dairas) > 0,
+    }

@@ -88,13 +88,14 @@ export default function MarkdownView({ content }: { content: string }) {
       continue;
     }
 
-    if (/^#{1,3}\s/.test(trimmed)) {
+    if (/^#{1,6}\s/.test(trimmed)) {
       flushList(`fl${i}`);
       const level = trimmed.match(/^#+/)![0].length;
       const txt = trimmed.replace(/^#+\s/, "");
       const cls = level === 1 ? "mt-4 mb-2 text-xl font-bold text-primary"
         : level === 2 ? "mt-4 mb-2 text-lg font-semibold text-slate-100"
-        : "mt-3 mb-1 text-base font-semibold text-accent";
+        : level === 3 ? "mt-3 mb-1 text-base font-semibold text-accent"
+        : "mt-2 mb-1 text-sm font-semibold text-accent-2";
       blocks.push(<div key={`h${i}`} className={cls}>{renderInline(txt, `h${i}`)}</div>);
     } else if (/^[-*]\s/.test(trimmed)) {
       listBuffer.push(trimmed.replace(/^[-*]\s/, ""));

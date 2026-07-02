@@ -86,3 +86,257 @@ def territory_profile(territory_id: int, db: Session = Depends(get_db)):
              "value": round(min(100, (density or 0) / 50)) if density else 0},
         ],
     }
+
+
+@router.get("/{territory_id}/risks-detail")
+def risks_detail(territory_id: int, db: Session = Depends(get_db)):
+    """Détail des risques naturels avec valeurs réelles par aléa (page Risques)."""
+    from app.models.territory import Territory
+    from app.data.risks_data import risk_profile
+    t = db.get(Territory, territory_id)
+    if not t:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Territoire introuvable")
+    prof = risk_profile(t.wilaya_code or "", t.center_lat or 36,
+                        t.population or 0, t.area_km2 or 1)
+    return {
+        "territory_id": t.id, "territory_name": t.name,
+        "wilaya_code": t.wilaya_code,
+        "global": prof["global"], "seismic_zone": prof["seismic_zone"],
+        "hazards": prof["hazards"],
+    }
+
+
+@router.get("/{territory_id}/risks-hierarchy")
+def risks_hierarchy(territory_id: int, db: Session = Depends(get_db)):
+    """Risques de la wilaya + détail par daïra et commune (wilaya→daïra→commune)."""
+    from app.models.territory import Territory
+    from app.data.risks_data import risk_profile
+    from app.data.admin_divisions import ADMIN_DIVISIONS
+    import hashlib
+
+    t = db.get(Territory, territory_id)
+    if not t:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Territoire introuvable")
+
+    wcode = (t.wilaya_code or "").zfill(2)
+    base = risk_profile(wcode, t.center_lat or 36, t.population or 0, t.area_km2 or 1)
+
+    # Petite variation déterministe par commune (autour des valeurs de la wilaya)
+    def vary(base_val: int, seed: str) -> int:
+        h = int(hashlib.md5(seed.encode()).hexdigest(), 16) % 21 - 10  # -10..+10
+        return max(5, min(98, base_val + h))
+
+    def level(v):
+        return "Élevé" if v >= 65 else "Modéré" if v >= 40 else "Faible"
+
+    wilaya_data = ADMIN_DIVISIONS.get(wcode)
+    dairas = []
+    if wilaya_data:
+        for daira_name, communes in wilaya_data["dairas"].items():
+            commune_list = []
+            for cname in communes:
+                hazards = []
+                for hz in base["hazards"]:
+                    v = vary(hz["value"], f"{cname}-{hz['key']}")
+                    hazards.append({"key": hz["key"], "name": hz["name"], "value": v, "level": level(v)})
+                gidx = round(sum(h["value"] for h in hazards) / len(hazards))
+                commune_list.append({"name": cname, "global": gidx, "level": level(gidx), "hazards": hazards})
+            # risque moyen de la daïra
+            davg = round(sum(c["global"] for c in commune_list) / len(commune_list)) if commune_list else base["global"]
+            dairas.append({"name": daira_name, "global": davg, "level": level(davg), "communes": commune_list})
+
+    return {
+        "territory_id": t.id, "territory_name": t.name, "wilaya_code": wcode,
+        "global": base["global"], "seismic_zone": base["seismic_zone"],
+        "hazards": base["hazards"],
+        "dairas": dairas,
+        "has_detail": len(dairas) > 0,
+    }
+
+
+@router.get("/{territory_id}/resilience")
+def resilience_detail(territory_id: int, db: Session = Depends(get_db)):
+    """Résilience urbaine (données dérivées) + détail par daïra et commune."""
+    from app.models.territory import Territory
+    from app.data.resilience_data import resilience_profile
+    from app.data.admin_divisions import ADMIN_DIVISIONS
+    import hashlib
+
+    t = db.get(Territory, territory_id)
+    if not t:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Territoire introuvable")
+
+    wcode = (t.wilaya_code or "").zfill(2)
+    # performance énergétique depuis le profil
+    try:
+        prof = territory_profile(territory_id, db)
+        eperf = prof.get("energy_performance", 70)
+    except Exception:
+        eperf = 70
+
+    base = resilience_profile(wcode, t.center_lat or 36, t.population or 0, t.area_km2 or 1, eperf)
+
+    def vary(v, seed):
+        h = int(hashlib.md5(seed.encode()).hexdigest(), 16) % 21 - 10
+        return max(10, min(98, v + h))
+
+    def level(v):
+        return "Élevée" if v >= 65 else "Moyenne" if v >= 45 else "Faible"
+
+    wilaya_data = ADMIN_DIVISIONS.get(wcode)
+    dairas = []
+    if wilaya_data:
+        for daira_name, communes in wilaya_data["dairas"].items():
+            clist = []
+            for cname in communes:
+                # dimensions propres à la commune (variation par axe autour de la wilaya)
+                cdims = [{"axis": d["axis"], "score": vary(d["score"], f"{cname}-{d['axis']}")}
+                         for d in base["dimensions"]]
+                gv = round(sum(x["score"] for x in cdims) / len(cdims))
+                clist.append({"name": cname, "global": gv, "level": level(gv), "dimensions": cdims})
+            davg = round(sum(c["global"] for c in clist) / len(clist)) if clist else base["global"]
+            # dimensions de la daïra = moyenne de ses communes
+            ddims = []
+            for i, d in enumerate(base["dimensions"]):
+                avg = round(sum(c["dimensions"][i]["score"] for c in clist) / len(clist)) if clist else d["score"]
+                ddims.append({"axis": d["axis"], "score": avg})
+            dairas.append({"name": daira_name, "global": davg, "level": level(davg),
+                          "dimensions": ddims, "communes": clist})
+
+    return {
+        "territory_id": t.id, "territory_name": t.name, "wilaya_code": wcode,
+        "global": base["global"], "heat_zones": base["heat_zones"],
+        "water_management": base["water_management"], "green_coverage": base["green_coverage"],
+        "dimensions": base["dimensions"],
+        "dairas": dairas, "has_detail": len(dairas) > 0,
+    }
+
+
+@router.get("/{territory_id}/mobility-detail")
+def mobility_detail(territory_id: int, db: Session = Depends(get_db)):
+    """Mobilité & accessibilité (données dérivées) + détail par daïra et commune."""
+    from app.models.territory import Territory
+    from app.data.mobility_data import mobility_profile
+    from app.data.admin_divisions import ADMIN_DIVISIONS
+    import hashlib
+
+    t = db.get(Territory, territory_id)
+    if not t:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Territoire introuvable")
+
+    wcode = (t.wilaya_code or "").zfill(2)
+    base = mobility_profile(wcode, t.population or 0, t.area_km2 or 1)
+
+    def vary(v, seed, spread=10):
+        h = int(hashlib.md5(seed.encode()).hexdigest(), 16) % (2 * spread + 1) - spread
+        return max(5, min(98, v + h))
+
+    def level(v):
+        return "Bonne" if v >= 65 else "Moyenne" if v >= 45 else "Faible"
+
+    def commune_modal(cname):
+        # répartition modale propre à la commune (variation, re-normalisée à 100)
+        raw = [{"mode": m["mode"], "value": vary(m["value"], f"{cname}-{m['mode']}", 6)}
+               for m in base["modal_split"]]
+        tot = sum(x["value"] for x in raw) or 1
+        norm = [{"mode": x["mode"], "value": round(x["value"] * 100 / tot)} for x in raw]
+        # ajuster l'arrondi pour tomber pile à 100
+        diff = 100 - sum(x["value"] for x in norm)
+        if norm:
+            norm[0]["value"] += diff
+        return norm
+
+    wilaya_data = ADMIN_DIVISIONS.get(wcode)
+    dairas = []
+    if wilaya_data:
+        for daira_name, communes in wilaya_data["dairas"].items():
+            clist = []
+            for cname in communes:
+                cov = vary(base["transport_coverage"], f"{cname}-cov")
+                ped = vary(base["pedestrian"], f"{cname}-ped")
+                score = round((cov + ped) / 2)
+                clist.append({"name": cname, "transport_coverage": cov,
+                              "pedestrian": ped, "score": score, "level": level(score),
+                              "modal_split": commune_modal(cname)})
+            davg = round(sum(c["score"] for c in clist) / len(clist)) if clist else 50
+            # modal moyen de la daïra = moyenne des communes
+            dmodal = []
+            for i, m in enumerate(base["modal_split"]):
+                avg = round(sum(c["modal_split"][i]["value"] for c in clist) / len(clist)) if clist else m["value"]
+                dmodal.append({"mode": m["mode"], "value": avg})
+            # ajuster à 100 exactement
+            _diff = 100 - sum(x["value"] for x in dmodal)
+            if dmodal:
+                dmodal[0]["value"] += _diff
+            dairas.append({"name": daira_name, "score": davg, "level": level(davg),
+                          "modal_split": dmodal, "communes": clist})
+
+    return {
+        "territory_id": t.id, "territory_name": t.name, "wilaya_code": wcode,
+        "traffic": base["traffic"], "transport_coverage": base["transport_coverage"],
+        "bike_km": base["bike_km"], "pedestrian": base["pedestrian"],
+        "modal_split": base["modal_split"],
+        "dairas": dairas, "has_detail": len(dairas) > 0,
+    }
+
+
+@router.get("/{territory_id}/compare-data")
+def compare_data(territory_id: int, db: Session = Depends(get_db)):
+    """Données consolidées d'une wilaya pour la comparaison (mêmes sources que
+    les pages Risques / Résilience / Mobilité / Énergie, pour la cohérence)."""
+    from app.models.territory import Territory
+    from app.data.risks_data import risk_profile
+    from app.data.resilience_data import resilience_profile
+    from app.data.mobility_data import mobility_profile
+    from app.data.energy_data import energy_distribution, estimate_buildings
+
+    t = db.get(Territory, territory_id)
+    if not t:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Territoire introuvable")
+
+    wcode = (t.wilaya_code or "").zfill(2)
+    lat = t.center_lat or 36
+    pop = t.population or 0
+    area = t.area_km2 or 1
+    density = round(pop / area, 1) if area else 0
+
+    # Performance énergétique (même logique que la page Énergie)
+    try:
+        prof = territory_profile(territory_id, db)
+        eperf = prof.get("energy_performance", 70)
+    except Exception:
+        eperf = 70
+
+    risks = risk_profile(wcode, lat, pop, area)
+    resil = resilience_profile(wcode, lat, pop, area, eperf)
+    mob = mobility_profile(wcode, pop, area)
+
+    return {
+        "territory_id": t.id, "territory_name": t.name, "wilaya_code": wcode,
+        "population": pop, "area_km2": area, "density": density,
+        "energy_performance": round(eperf),
+        "risk_global": risks["global"], "seismic_zone": risks["seismic_zone"],
+        "resilience_global": resil["global"],
+        "transport_coverage": mob["transport_coverage"],
+        "pedestrian": mob["pedestrian"],
+        "green_coverage": resil["green_coverage"],
+        # pour les graphes détaillés
+        "risk_hazards": risks["hazards"],
+        "resilience_dimensions": resil["dimensions"],
+        "modal_split": mob["modal_split"],
+    }
+
+
+@router.get("/compare/{id_a}/{id_b}/analysis")
+def compare_analysis_endpoint(id_a: int, id_b: int, db: Session = Depends(get_db)):
+    """Analyse comparative de deux wilayas : locale (toujours) + IA Mistral (si dispo)."""
+    from app.services.compare_ai import compare_analysis
+    a = compare_data(id_a, db)
+    b = compare_data(id_b, db)
+    result = compare_analysis(a, b)
+    return {"wilaya_a": a["territory_name"], "wilaya_b": b["territory_name"], **result}

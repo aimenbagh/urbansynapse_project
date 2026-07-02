@@ -42,11 +42,13 @@ export default function Topbar() {
           className="w-full rounded-lg bg-white/5 py-2 pl-9 pr-3 text-sm outline-none placeholder:text-slate-500 focus:ring-1 focus:ring-primary" />
       </div>
 
-      {/* Bouton Ajouter des données */}
-      <button onClick={() => navigate("/ajouter")}
-        className="flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/80">
-        <Plus size={16} /> {t("top.add")}
-      </button>
+      {/* Bouton Ajouter des données (ADMIN uniquement) */}
+      {user?.role === "admin" && (
+        <button onClick={() => navigate("/ajouter")}
+          className="flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/80">
+          <Plus size={16} /> {t("top.add")}
+        </button>
+      )}
 
       <TerritorySelect />
 

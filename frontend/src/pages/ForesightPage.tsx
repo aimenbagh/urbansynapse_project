@@ -11,7 +11,7 @@ import MarkdownView from "@/components/ui/MarkdownView";
 import TerritoryMap from "@/components/map/TerritoryMap";
 import MapLegend from "@/components/map/MapLegend";
 import {
-  fetchForecast, fetchScenarios, generatePlan, fetchStructuredPlan,
+  fetchForecast, fetchScenarios, generatePlan, fetchStructuredPlan, fetchForesightSubdivisions,
   type PlanResult, type StructuredPlan,
 } from "@/api/foresight";
 import { useAppStore } from "@/store/useAppStore";
@@ -42,6 +42,8 @@ export default function ForesightPage() {
   const { data: forecast } = useQuery({ queryKey: ["forecast", territoryId, horizon], queryFn: () => fetchForecast(territoryId, 2025 + horizon) });
   const { data: scenarios } = useQuery({ queryKey: ["scenarios-foresight", territoryId, horizon], queryFn: () => fetchScenarios(territoryId, horizon) });
   const { data: structured } = useQuery({ queryKey: ["structured", territoryId, horizon], queryFn: () => fetchStructuredPlan(territoryId, horizon) });
+  const { data: subdivisions } = useQuery({ queryKey: ["foresight-subs", territoryId], queryFn: () => fetchForesightSubdivisions(territoryId) });
+  const [openDaira, setOpenDaira] = useState<string | null>(null);
 
   const planMut = useMutation({ mutationFn: () => generatePlan(territoryId, horizon) });
   const plan: PlanResult | undefined = planMut.data;
@@ -219,6 +221,50 @@ export default function ForesightPage() {
           {!plan && !planMut.isPending && (
             <p className="mt-4 text-sm text-slate-500">Génère un plan d'action narratif combinant la projection ML, le diagnostic et l'IA générative (Mistral).</p>
           )}
+        </Panel>
+      )}
+
+      {/* Récapitulatif prospectif par daïra et commune */}
+      {subdivisions?.has_detail && (
+        <Panel title={`Projection par daïra et commune (${subdivisions.dairas.length} daïras)`} className="mt-6">
+          <div className="mb-2 grid grid-cols-[1fr_auto_auto_auto] gap-2 border-b border-white/10 pb-2 text-xs text-slate-400">
+            <span>Territoire</span><span className="text-right">Actuel</span>
+            <span className="text-right">Objectif</span><span className="text-right">Gain</span>
+          </div>
+          <div className="space-y-1">
+            {subdivisions.dairas.map((d) => {
+              const open = openDaira === d.name;
+              return (
+                <div key={d.name}>
+                  <button onClick={() => setOpenDaira(open ? null : d.name)}
+                    className="grid w-full grid-cols-[1fr_auto_auto_auto] gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-white/5">
+                    <span className="flex items-center gap-1 font-medium">
+                      <span className="text-slate-500">{open ? "▾" : "▸"}</span> Daïra {d.name}
+                      <span className="text-xs text-slate-500">({d.communes.length})</span>
+                    </span>
+                    <span className="text-right text-slate-300">{d.current}%</span>
+                    <span className="text-right text-primary">{d.target}%</span>
+                    <span className="text-right text-emerald-400">+{d.gain}</span>
+                  </button>
+                  {open && (
+                    <div className="ml-4 border-l border-white/10 pl-2">
+                      {d.communes.map((cm) => (
+                        <div key={cm.name} className="grid grid-cols-[1fr_auto_auto_auto] gap-2 px-2 py-1 text-xs">
+                          <span className="text-slate-400">{cm.name}</span>
+                          <span className="text-right text-slate-400">{cm.current}%</span>
+                          <span className="text-right text-primary/80">{cm.target}%</span>
+                          <span className="text-right text-emerald-400/80">+{cm.gain}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-3 text-xs text-slate-500">
+            Projection de performance énergétique (actuel → objectif à {horizon} ans) par subdivision administrative.
+          </p>
         </Panel>
       )}
     </div>
