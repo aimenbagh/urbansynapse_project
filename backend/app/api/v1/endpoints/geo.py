@@ -81,6 +81,15 @@ def territory_geojson(territory_id: int, db: Session = Depends(get_db)):
                 },
             })
 
+    # Si la wilaya n'a pas de données réelles, générer des géométries synthétiques
+    if not features:
+        from app.data.synthetic_geo import synthetic_features
+        szones, sbuildings = synthetic_features(
+            territory.wilaya_code or "", territory.name,
+            territory.center_lon, territory.center_lat)
+        features.extend(szones)
+        features.extend(sbuildings)
+
     # Centre = moyenne des centroïdes des zones (pour recentrer la carte)
     center = None
     zone_geoms = [_geom_to_dict(z.geom) for z in zones if z.geom]

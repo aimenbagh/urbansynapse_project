@@ -1,8 +1,9 @@
-import { useMemo, useState, useRef } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import Map, { Source, Layer, Popup, NavigationControl, type MapLayerMouseEvent } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useQuery } from "@tanstack/react-query";
 import { fetchTerritoryGeoJSON } from "@/api/geo";
+import { fetchEnergyNetwork } from "@/api/layers";
 import { fetchRiskLayer, fetchMobilityLayer, fetchSocioLayer, fetchClimateLayer, fetchCommunesLayer } from "@/api/layers";
 import { exportGeoJSON } from "@/api/geo";
 import { BASEMAPS, type BasemapId } from "./basemaps";
@@ -68,12 +69,14 @@ export default function TerritoryMap({ planMode = false }: { planMode?: boolean 
   const showMobility = activeLayers.includes("mobility");
   const showSocio = activeLayers.includes("socio");
   const showCommunes = activeLayers.includes("communes");
+  const showEnergyNet = activeLayers.includes("energy");
 
   const { data } = useQuery({ queryKey: ["geojson", territoryId], queryFn: () => fetchTerritoryGeoJSON(territoryId) });
   const { data: risks } = useQuery({ queryKey: ["risks", territoryId], queryFn: () => fetchRiskLayer(territoryId), enabled: showRisks });
   const { data: mobility } = useQuery({ queryKey: ["mobility", territoryId], queryFn: () => fetchMobilityLayer(territoryId), enabled: showMobility });
   const { data: socio } = useQuery({ queryKey: ["socio", territoryId], queryFn: () => fetchSocioLayer(territoryId), enabled: showSocio });
   const { data: communes } = useQuery({ queryKey: ["communes", territoryId], queryFn: () => fetchCommunesLayer(territoryId), enabled: showCommunes });
+  const { data: energyNet } = useQuery({ queryKey: ["energy-net", territoryId], queryFn: () => fetchEnergyNetwork(territoryId), enabled: showEnergyNet });
   const { data: climate } = useQuery({
     queryKey: ["climate", territoryId, climateVar],
     queryFn: () => fetchClimateLayer(territoryId, climateVar!),
@@ -84,7 +87,7 @@ export default function TerritoryMap({ planMode = false }: { planMode?: boolean 
   const simActive = measuresCount > 0;
   // en mode plan, on affiche toujours zones + bâtiments
   const showZones = planMode || activeLayers.includes("land_use");
-  const showBuildings = planMode || activeLayers.includes("buildings") || activeLayers.includes("energy");
+  const showBuildings = planMode || activeLayers.includes("buildings");
 
   const zones = useMemo(() => ({
     type: "FeatureCollection" as const,
@@ -100,6 +103,57 @@ export default function TerritoryMap({ planMode = false }: { planMode?: boolean 
       });
     return { type: "FeatureCollection" as const, features: feats };
   }, [data, showAfter, simActive, measuresCount]);
+
+  // Auto-cadrage : ajuster la vue pour englober zones + bâtiments quand ils chargent
+  useEffect(() => {
+    const map = mapRef.current?.getMap?.();
+    if (!map) return;
+    const feats = [...(zones.features ?? []), ...(buildings.features ?? [])];
+    if (!feats.length) return;
+    let minX = 180, minY = 90, maxX = -180, maxY = -90;
+    for (const f of feats) {
+      const coords = (f.geometry as any)?.coordinates?.[0];
+      if (!coords) continue;
+      for (const [x, y] of coords) {
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+      }
+    }
+    if (minX <= maxX && minY <= maxY) {
+      try {
+        map.fitBounds([[minX, minY], [maxX, maxY]], { padding: 60, maxZoom: 15, duration: 600 });
+      } catch { /* noop */ }
+    }
+  }, [zones, buildings, is3D]);
+
+  // Remonte nos couches au-dessus du fond de carte (fonction réutilisable).
+  const OUR_LAYERS = ["zones-fill", "zones-line",
+                  "risks-fill", "risks-line", "risks-3d", "mobility-line", "socio-circle",
+                  "communes-circle", "communes-label", "energy-net-line", "energy-net-node",
+                  "buildings-fill", "buildings-line", "buildings-3d"];
+  const bumpLayers = () => {
+    const map = mapRef.current?.getMap?.();
+    if (!map) return;
+    for (const id of OUR_LAYERS) {
+      if (map.getLayer?.(id)) {
+        try { map.moveLayer(id); } catch { /* noop */ }
+      }
+    }
+  };
+
+  // Attacher les écouteurs quand la carte est prête (via onLoad ci-dessous),
+  // + remonter à chaque mise à jour de données.
+  useEffect(() => {
+    const map = mapRef.current?.getMap?.();
+    if (!map) return;
+    bumpLayers();
+    map.on?.("idle", bumpLayers);
+    map.on?.("sourcedata", bumpLayers);
+    return () => {
+      map.off?.("idle", bumpLayers);
+      map.off?.("sourcedata", bumpLayers);
+    };
+  }, [is3D, basemap, showBuildings, showRisks, showMobility, showSocio, showCommunes, showEnergyNet]);
 
   const dataCenter = (data as any)?.territory?.center as [number, number] | null | undefined;
   const center = dataCenter ?? CENTERS[territoryId] ?? [3.0588, 36.7538];
@@ -310,13 +364,14 @@ export default function TerritoryMap({ planMode = false }: { planMode?: boolean 
       </div>
 
       <Map ref={mapRef} reuseMaps key={`${territoryId}-${center[0].toFixed(3)}-${planMode}-${basemap}-${is3D}`}
-        initialViewState={{ longitude: center[0], latitude: center[1], zoom: is3D ? 14 : 12, pitch: is3D ? 55 : 0, bearing: is3D ? -20 : 0 }}
+        initialViewState={{ longitude: center[0], latitude: center[1], zoom: is3D ? 14 : 13.5, pitch: is3D ? 55 : 0, bearing: is3D ? -20 : 0 }}
         maxPitch={85}
         terrain={is3D ? { source: "terrain-dem", exaggeration: 1.3 } : undefined}
         mapStyle={BASEMAPS[basemap].style}
         preserveDrawingBuffer
         style={{ width: "100%", height: "100%", borderRadius: 12 }}
-        interactiveLayerIds={interactive} onClick={onClick}>
+        interactiveLayerIds={interactive} onClick={onClick}
+        onLoad={() => { setTimeout(bumpLayers, 100); setTimeout(bumpLayers, 500); }}>
         <NavigationControl position="bottom-right" showCompass />
         {points.length > 0 && (
           <Source id="tool-geo" type="geojson" data={toolGeo}>
@@ -366,8 +421,8 @@ export default function TerritoryMap({ planMode = false }: { planMode?: boolean 
                 }} />
             ) : (
               <>
-                <Layer id="buildings-fill" type="fill" paint={{ "fill-color": ENERGY_COLORS, "fill-opacity": planMode ? 0.7 : 0.85 }} />
-                <Layer id="buildings-line" type="line" paint={{ "line-color": "#ffffff", "line-width": 0.3, "line-opacity": 0.4 }} />
+                <Layer id="buildings-fill" type="fill" paint={{ "fill-color": ENERGY_COLORS, "fill-opacity": 0.92 }} />
+                <Layer id="buildings-line" type="line" paint={{ "line-color": "#0b1220", "line-width": 1.2, "line-opacity": 0.8 }} />
               </>
             )}
           </Source>
@@ -407,6 +462,23 @@ export default function TerritoryMap({ planMode = false }: { planMode?: boolean 
                 "circle-radius": ["interpolate", ["linear"], ["get", "buildings"], 0, 8, 10, 30],
                 "circle-color": "#a855f7", "circle-opacity": 0.45,
                 "circle-stroke-color": "#c084fc", "circle-stroke-width": 1.5,
+              }} />
+          </Source>
+        )}
+        {showEnergyNet && energyNet && (
+          <Source id="energy-net" type="geojson" data={energyNet}>
+            <Layer id="energy-net-line" type="line"
+              filter={["==", ["get", "kind"], "energy_line"]}
+              paint={{
+                "line-color": ["match", ["get", "level"], "Haute", "#dc2626", "Moyenne", "#f59e0b", "#22c55e"],
+                "line-width": 2.5, "line-opacity": 0.85,
+              }} />
+            <Layer id="energy-net-node" type="circle"
+              filter={["==", ["get", "kind"], "energy_node"]}
+              paint={{
+                "circle-radius": ["match", ["get", "node_type"], "poste_source", 9, 5],
+                "circle-color": ["match", ["get", "node_type"], "poste_source", "#7c4dff", "#38bdf8"],
+                "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.5,
               }} />
           </Source>
         )}

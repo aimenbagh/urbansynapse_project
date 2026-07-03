@@ -241,8 +241,16 @@ export default function SimulationPage() {
 
             <p className="mb-2 text-xs font-medium text-slate-400">Détail des critères</p>
             <div className="space-y-2.5">
-              {CRITERIA.map((c) => {
-                const val = detail.parameters?.[c.key];
+              {(() => {
+              // Rétro-compat : si parameters manque, reconstruire depuis results
+              const src = detail.parameters
+                ?? (detail.results ? Object.fromEntries(Object.entries(detail.results).map(
+                     ([k, v]: any) => [k, Math.round((v as number) / 0.3)])) : null);
+              detail.__src = src;
+              return null;
+            })()}
+            {CRITERIA.map((c) => {
+                const val = detail.__src?.[c.key];
                 if (val == null) return null;
                 return (
                   <div key={c.key}>
@@ -256,11 +264,11 @@ export default function SimulationPage() {
                   </div>
                 );
               })}
-              {!detail.parameters && <p className="text-sm text-slate-500">Aucun détail de critère enregistré pour ce scénario.</p>}
+              {!detail.__src && <p className="text-sm text-slate-500">Aucun détail de critère enregistré pour ce scénario. Recrée-le pour voir le détail complet.</p>}
             </div>
 
             <button
-              onClick={() => { setName(detail.name + " (copie)"); if (detail.parameters) setParams(detail.parameters); setDetail(null); }}
+              onClick={() => { setName(detail.name + " (copie)"); if (detail.__src) setParams(detail.__src); setDetail(null); }}
               className="mt-5 w-full rounded-lg bg-white/5 px-4 py-2 text-sm text-slate-200 hover:bg-white/10">
               Charger ces valeurs dans le simulateur
             </button>

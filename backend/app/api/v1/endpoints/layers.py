@@ -8,6 +8,25 @@ from app.db.session import get_db
 router = APIRouter(prefix="/layers", tags=["layers"])
 
 
+def _zones_or_synthetic(territory, db):
+    """Renvoie une liste de (nom, geom_dict) : zones réelles, sinon synthétiques."""
+    from app.models.territory import Zone
+    zones = db.query(Zone).filter(Zone.territory_id == territory.id).all()
+    out = []
+    for z in zones:
+        g = _geom(z.geom)
+        if g:
+            out.append((z.name, g))
+    if not out:
+        from app.data.synthetic_geo import synthetic_features
+        szones, _ = synthetic_features(territory.wilaya_code or "", territory.name,
+                                       territory.center_lon, territory.center_lat)
+        for f in szones:
+            out.append((f["properties"]["name"], f["geometry"]))
+    return out
+
+
+
 def _geom(v):
     if v is None:
         return None
@@ -31,19 +50,17 @@ def risk_layer(territory_id: int, db: Session = Depends(get_db)):
     from app.models.territory import Territory, Zone
     if not db.get(Territory, territory_id):
         raise HTTPException(404, "Territoire introuvable")
-    zones = db.query(Zone).filter(Zone.territory_id == territory_id).all()
+    terr = db.get(Territory, territory_id)
+    zones = _zones_or_synthetic(terr, db)
     rng = random.Random(territory_id)
     risk_types = ["Inondation", "Séisme", "Îlot de chaleur", "Feu de forêt"]
     levels = ["Faible", "Modéré", "Élevé"]
     features = []
-    for z in zones:
-        g = _geom(z.geom)
-        if not g:
-            continue
+    for zname, g in zones:
         features.append({
             "type": "Feature", "geometry": g,
             "properties": {
-                "kind": "risk", "zone": z.name,
+                "kind": "risk", "zone": zname,
                 "risk_type": rng.choice(risk_types),
                 "level": rng.choice(levels),
             },
@@ -57,12 +74,11 @@ def mobility_layer(territory_id: int, db: Session = Depends(get_db)):
     from app.models.territory import Territory, Zone
     if not db.get(Territory, territory_id):
         raise HTTPException(404, "Territoire introuvable")
-    zones = db.query(Zone).filter(Zone.territory_id == territory_id).all()
+    terr = db.get(Territory, territory_id)
+    zones = _zones_or_synthetic(terr, db)
     centers = []
-    for z in zones:
-        g = _geom(z.geom)
-        if g:
-            centers.append((_zone_center(g), z.name))
+    for zname, g in zones:
+        centers.append((_zone_center(g), zname))
     features = []
     # relier les zones consécutives = lignes de transport
     types = ["Bus", "Tramway", "Piste cyclable"]
@@ -83,22 +99,22 @@ def socio_layer(territory_id: int, db: Session = Depends(get_db)):
     from app.models.territory import Territory, Zone, Building
     if not db.get(Territory, territory_id):
         raise HTTPException(404, "Territoire introuvable")
-    zones = db.query(Zone).filter(Zone.territory_id == territory_id).all()
+    terr = db.get(Territory, territory_id)
+    zones = _zones_or_synthetic(terr, db)
+    import hashlib
     features = []
-    for z in zones:
-        g = _geom(z.geom)
-        if not g:
-            continue
-        nb = db.query(Building).filter(Building.zone_id == z.id).count()
+    for zname, g in zones:
         lon, lat = _zone_center(g)
-        # densité estimée proportionnelle au nombre de bâtiments
+        # nombre de bâtiments (réel si zone réelle, sinon estimé déterministe)
+        h = int(hashlib.md5(zname.encode()).hexdigest(), 16)
+        nb = 3 + (h % 8)
         density = nb * 1200
         features.append({
             "type": "Feature",
             "geometry": {"type": "Point", "coordinates": [lon, lat]},
-            "properties": {"kind": "socio", "zone": z.name,
+            "properties": {"kind": "socio", "zone": zname,
                            "buildings": nb, "density": density,
-                           "land_use": z.land_use},
+                           "land_use": "mixte"},
         })
     return {"type": "FeatureCollection", "features": features}
 
@@ -198,3 +214,51 @@ def communes_layer(territory_id: int, db: Session = Depends(get_db)):
         })
     return {"type": "FeatureCollection", "features": features,
             "source": "RGPH 2008 - Office National des Statistiques"}
+
+
+@router.get("/{territory_id}/energy-network")
+def energy_network_layer(territory_id: int, db: Session = Depends(get_db)):
+    """Réseau énergétique : postes de distribution + lignes vers les zones."""
+    from app.models.territory import Territory
+    import hashlib
+    terr = db.get(Territory, territory_id)
+    if not terr:
+        raise HTTPException(404, "Territoire introuvable")
+
+    zones = _zones_or_synthetic(terr, db)
+    if not zones:
+        return {"type": "FeatureCollection", "features": []}
+
+    # centres des zones
+    centers = [(_zone_center(g), zname) for zname, g in zones]
+    # poste principal = barycentre
+    px = sum(c[0][0] for c in centers) / len(centers)
+    py = sum(c[0][1] for c in centers) / len(centers)
+
+    features = []
+    # poste source (gros point)
+    features.append({
+        "type": "Feature",
+        "geometry": {"type": "Point", "coordinates": [px, py]},
+        "properties": {"kind": "energy_node", "node_type": "poste_source",
+                       "name": "Poste source", "capacity_mva": 120},
+    })
+    # lignes du poste vers chaque zone + poste de quartier
+    for (cx, cy), zname in centers:
+        h = int(hashlib.md5(zname.encode()).hexdigest(), 16)
+        load = 40 + (h % 55)  # charge % de la ligne
+        level = "Haute" if load >= 75 else "Moyenne" if load >= 55 else "Normale"
+        features.append({
+            "type": "Feature",
+            "geometry": {"type": "LineString", "coordinates": [[px, py], [cx, cy]]},
+            "properties": {"kind": "energy_line", "zone": zname,
+                           "load_pct": load, "level": level},
+        })
+        # poste de quartier
+        features.append({
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [cx, cy]},
+            "properties": {"kind": "energy_node", "node_type": "poste_quartier",
+                           "name": f"Poste {zname}", "load_pct": load},
+        })
+    return {"type": "FeatureCollection", "features": features}

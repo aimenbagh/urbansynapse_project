@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import {
   Layers, Zap, Building, AlertTriangle, Navigation, BarChart2, Check,
-  Users, Ruler, Home, Sparkles, Lightbulb,
+  Users, Ruler, Home, Sparkles, Lightbulb, UserSquare2,
 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
 import Panel from "@/components/ui/Panel";
@@ -57,11 +58,18 @@ export default function TerritorialAnalysisPage() {
 
   const getVal = (k: string) => indicators?.find((i) => i.key === k)?.value;
 
+  const navigate = useNavigate();
   return (
     <div>
       <PageHeader
         title="Analyse territoriale"
         subtitle={`Cartographie multi-couches — ${stats?.name ?? "…"}`}
+        action={
+          <button onClick={() => navigate(`/wilaya/${territoryId}`)}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90">
+            <UserSquare2 size={16} /> Voir le profil complet
+          </button>
+        }
       />
       <SimulationBanner />
 
