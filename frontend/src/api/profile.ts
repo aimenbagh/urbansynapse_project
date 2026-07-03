@@ -88,3 +88,22 @@ export interface CompareAnalysis {
 
 export const fetchCompareAnalysis = async (idA: number, idB: number): Promise<CompareAnalysis> =>
   (await apiClient.get(`/profile/compare/${idA}/${idB}/analysis`)).data;
+
+export interface DashboardData {
+  territory_id: number; territory_name: string; wilaya_code: string;
+  kpis: {
+    energy_performance: number; resilience: number; co2_avoided: number;
+    air_quality: number; population: number; density: number;
+    buildings: number; avg_building_age: number;
+  };
+  evolution: { month: string; performance: number; resilience: number; air: number; mobility: number }[];
+  sectors: { name: string; value: number }[];
+  dairas: {
+    name: string; communes: number; performance: number; risk: number;
+    evolution: { month: string; performance: number; resilience: number; air: number; mobility: number }[];
+  }[];
+  has_detail: boolean;
+}
+
+export const fetchDashboard = async (territoryId: number): Promise<DashboardData> =>
+  (await apiClient.get(`/profile/${territoryId}/dashboard`)).data;

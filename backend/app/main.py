@@ -15,6 +15,45 @@ except Exception as _e:
     print(f"[warn] création des tables au démarrage: {_e}")
 
 
+def _auto_migrate():
+    """Ajoute les colonnes manquantes aux tables existantes (migration légère).
+
+    Évite l'erreur 'no such column' quand le modèle évolue sans recréer la base.
+    """
+    from sqlalchemy import inspect, text
+    try:
+        eng = get_engine()
+        insp = inspect(eng)
+        # colonnes attendues à ajouter si absentes : (table, colonne, type SQL)
+        wanted = [
+            ("scenarios", "user_id", "INTEGER"),
+            ("scenarios", "created_at", "TIMESTAMP"),
+            ("reports", "user_id", "INTEGER"),
+            ("reports", "created_at", "TIMESTAMP"),
+            ("reports", "generated_by", "VARCHAR"),
+            ("reports", "population", "INTEGER"),
+            ("reports", "energy_performance", "FLOAT"),
+            ("reports", "risk_global", "INTEGER"),
+            ("reports", "territory_name", "VARCHAR"),
+            ("users", "suspended_until", "TIMESTAMP"),
+            ("users", "created_at", "TIMESTAMP"),
+        ]
+        existing_tables = insp.get_table_names()
+        with eng.begin() as conn:
+            for table, col, sqltype in wanted:
+                if table not in existing_tables:
+                    continue
+                cols = [c["name"] for c in insp.get_columns(table)]
+                if col not in cols:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {sqltype}"))
+                    print(f"[migration] Colonne {table}.{col} ajoutée.")
+    except Exception as _e:
+        print(f"[warn] auto-migration: {_e}")
+
+
+_auto_migrate()
+
+
 def _seed_default_users():
     """Crée les comptes admin/user par défaut s'ils n'existent pas."""
     try:

@@ -39,6 +39,40 @@ def _collect(territory_id: int, db: Session):
     return name, stats, indicators, recs
 
 
+
+def _profile_for_pdf(territory_id: int, db):
+    """Récupère profil + analyse détaillée (risques/résilience/mobilité) pour le PDF."""
+    from app.models.territory import Territory
+    from app.data.risks_data import risk_profile
+    from app.data.resilience_data import resilience_profile
+    from app.data.mobility_data import mobility_profile
+    out = {}
+    try:
+        from app.api.v1.endpoints.profile import territory_profile
+        prof = territory_profile(territory_id, db)
+        out["energy_performance"] = prof.get("energy_performance")
+        out["risk_global"] = prof.get("risk", {}).get("global")
+    except Exception:
+        pass
+    try:
+        t = db.get(Territory, territory_id)
+        wc = (t.wilaya_code or "").zfill(2)
+        lat = t.center_lat or 36; pop = t.population or 0; area = t.area_km2 or 1
+        eperf = out.get("energy_performance", 70) or 70
+        risks = risk_profile(wc, lat, pop, area)
+        resil = resilience_profile(wc, lat, pop, area, eperf)
+        mob = mobility_profile(wc, pop, area)
+        out["seismic_zone"] = risks["seismic_zone"]
+        out["hazards"] = risks["hazards"]
+        out["resilience_global"] = resil["global"]
+        out["resilience_dimensions"] = resil["dimensions"]
+        out["transport_coverage"] = mob["transport_coverage"]
+        out["pedestrian"] = mob["pedestrian"]
+        out["modal_split"] = mob["modal_split"]
+    except Exception:
+        pass
+    return out
+
 @router.get("/{territory_id}", response_class=PlainTextResponse)
 def generate(territory_id: int, db: Session = Depends(get_db)):
     """Renvoie un rapport Markdown de synthèse du territoire."""
@@ -53,7 +87,7 @@ def generate(territory_id: int, db: Session = Depends(get_db)):
 def generate_pdf(territory_id: int, db: Session = Depends(get_db)):
     """Renvoie le rapport de synthèse au format PDF."""
     name, stats, indicators, recs = _collect(territory_id, db)
-    pdf_bytes = build_report_pdf(name, stats, indicators, recs)
+    pdf_bytes = build_report_pdf(name, stats, indicators, recs, _profile_for_pdf(territory_id, db))
     return Response(
         content=pdf_bytes, media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="rapport_{name}.pdf"'},
@@ -86,7 +120,7 @@ def generate_and_save(territory_id: int, db: Session = Depends(get_db), user=Dep
     from app.models.territory import Territory
 
     name, stats, indicators, recs = _collect(territory_id, db)
-    pdf_bytes = build_report_pdf(name, stats, indicators, recs)
+    pdf_bytes = build_report_pdf(name, stats, indicators, recs, _profile_for_pdf(territory_id, db))
 
     # Instantané des données réelles
     t = db.get(Territory, territory_id)

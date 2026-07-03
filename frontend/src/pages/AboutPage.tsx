@@ -75,24 +75,45 @@ export default function AboutPage() {
         `performance énergétique ${p.energy_performance}%, indice de risque ${p.risk.global}/100.`;
     }
     if (n === 2) {
-      // Analyse : profil + recommandations
+      // Analyse : profil + recommandations concrètes
       const [p, recs] = await Promise.all([
         fetchProfile(activeTerritoryId),
         fetchRecommendations(activeTerritoryId).catch(() => ({ recommendations: [] } as any)),
       ]);
-      const nb = recs?.recommendations?.length ?? 0;
-      return `Analyse de ${name} : ${p.analysis} — ${nb} recommandation(s) générée(s).`;
+      const list = recs?.recommendations ?? [];
+      let out = `Analyse de ${name} : ${p.analysis}\n\nSolutions recommandées :`;
+      if (list.length) {
+        out += "\n" + list.map((r: any, i: number) =>
+          `${i + 1}. ${r.title ?? r.name ?? "Action"} — ${r.detail ?? r.description ?? ""}`
+            + (r.priority ? ` [priorité ${r.priority}]` : "")).join("\n");
+      } else {
+        // solutions dérivées du profil si l'API n'en renvoie pas
+        const sols = [];
+        if (p.energy_performance < 70) sols.push("Rénovation thermique du bâti (isolation, double vitrage) pour améliorer la performance énergétique.");
+        if (p.risk.global >= 60) sols.push("Renforcement des normes parasismiques (RPA) et des plans de prévention des risques.");
+        sols.push("Développement des espaces verts et de la mobilité douce.");
+        out += "\n" + sols.map((x, i) => `${i + 1}. ${x}`).join("\n");
+      }
+      return out;
     }
     if (n === 3) {
-      // Scénarios prospectifs
-      const sc = await fetchScenarios(activeTerritoryId, 10);
+      // Scénarios prospectifs concrets
+      const p = await fetchProfile(activeTerritoryId);
+      const sc = await fetchScenarios(activeTerritoryId, 10).catch(() => ({} as any));
       const items = (sc as any)?.scenarios ?? [];
       if (items.length) {
         const lines = items.map((x: any) =>
           `• ${x.name ?? x.label ?? "Scénario"} : ${x.description ?? x.summary ?? ""}`).join("\n");
         return `${items.length} scénario(s) d'aménagement générés pour ${name} :\n${lines}`;
       }
-      return `Scénarios prospectifs générés pour ${name}.`;
+      // 3 scénarios types dérivés du profil réel
+      const perf = p.energy_performance;
+      const scenarios = [
+        `• Scénario « Transition énergétique » : porter la performance de ${perf}% à ${Math.min(95, perf + 15)}% via un programme de rénovation massive du bâti.`,
+        `• Scénario « Ville résiliente » : réduire l'indice de risque (${p.risk.global}/100) par la végétalisation, la gestion des eaux pluviales et le renforcement parasismique.`,
+        `• Scénario « Mobilité durable » : réduire la dépendance à la voiture par l'extension des transports en commun et des pistes cyclables.`,
+      ];
+      return `3 scénarios d'aménagement proposés pour ${name} :\n${scenarios.join("\n")}`;
     }
     if (n === 4) {
       // Rapport décisionnel PDF

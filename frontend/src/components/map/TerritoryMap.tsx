@@ -175,7 +175,7 @@ export default function TerritoryMap({ planMode = false }: { planMode?: boolean 
   const interactive: string[] = [];
   if (showBuildings) interactive.push(is3D ? "buildings-3d" : "buildings-fill");
   if (showZones) interactive.push("zones-fill");
-  if (showRisks) interactive.push("risks-fill");
+  if (showRisks) interactive.push(is3D ? "risks-3d" : "risks-fill");
   if (showMobility) interactive.push("mobility-line");
   if (showSocio) interactive.push("socio-circle");
   if (showCommunes) interactive.push("communes-circle");
@@ -376,10 +376,22 @@ export default function TerritoryMap({ planMode = false }: { planMode?: boolean 
 
         {showRisks && risks && (
           <Source id="risks" type="geojson" data={risks}>
-            <Layer id="risks-fill" type="fill"
-              paint={{ "fill-color": RISK_COLOR, "fill-opacity": 0.30 }} />
-            <Layer id="risks-line" type="line"
-              paint={{ "line-color": RISK_COLOR, "line-width": 1.5, "line-dasharray": [2, 1] }} />
+            {is3D ? (
+              <Layer id="risks-3d" type="fill-extrusion"
+                paint={{
+                  "fill-extrusion-color": RISK_COLOR,
+                  "fill-extrusion-height": ["*", ["coalesce", ["get", "value"], ["get", "level_num"], 40], 8],
+                  "fill-extrusion-base": 0,
+                  "fill-extrusion-opacity": 0.75,
+                }} />
+            ) : (
+              <>
+                <Layer id="risks-fill" type="fill"
+                  paint={{ "fill-color": RISK_COLOR, "fill-opacity": 0.30 }} />
+                <Layer id="risks-line" type="line"
+                  paint={{ "line-color": RISK_COLOR, "line-width": 1.5, "line-dasharray": [2, 1] }} />
+              </>
+            )}
           </Source>
         )}
         {showMobility && mobility && (
