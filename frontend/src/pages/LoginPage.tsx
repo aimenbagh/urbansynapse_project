@@ -86,7 +86,7 @@ export default function LoginPage() {
             {mutation.isPending ? "Connexion…" : mode === "login" ? "Se connecter" : "Créer le compte"}
           </button>
 
-          
+  
         </div>
       </div>
     </div>
