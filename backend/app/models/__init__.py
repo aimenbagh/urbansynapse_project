@@ -12,3 +12,5 @@ __all__ = ["Territory", "Zone", "Building", "Indicator", "Scenario", "User"]
 from app.models.document import Document  # noqa
 
 from app.models.report import Report  # noqa
+
+from app.models.ahp_analysis import AhpAnalysis  # noqa

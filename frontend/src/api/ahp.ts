@@ -17,3 +17,22 @@ export const computeAhpScore = async (
   });
   return data;
 };
+
+export interface SavedAhp {
+  id: number; name: string;
+  criteria: string[]; matrix: number[][];
+  weights: Record<string, number>;
+  consistency_ratio: number | null;
+  created_at: string;
+}
+
+export const saveAhp = async (payload: {
+  name: string; criteria: string[]; matrix: number[][];
+  weights: Record<string, number>; consistency_ratio?: number | null;
+}): Promise<SavedAhp> => (await apiClient.post("/ahp/save", payload)).data;
+
+export const fetchSavedAhp = async (): Promise<SavedAhp[]> =>
+  (await apiClient.get("/ahp/saved")).data;
+
+export const deleteAhp = async (id: number) =>
+  (await apiClient.delete(`/ahp/saved/${id}`)).data;

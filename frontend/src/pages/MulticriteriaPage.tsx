@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { saveAhp, fetchSavedAhp, deleteAhp } from "@/api/ahp";
+import { Save, Trash2, History } from "lucide-react";
 import { Scale, CheckCircle2, AlertCircle, Calculator } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
 import Panel from "@/components/ui/Panel";
@@ -44,6 +46,23 @@ export default function MulticriteriaPage() {
     mutationFn: () => computeAhpScore(CRITERIA, matrix, values),
   });
   const result: AHPScoreResult | undefined = mutation.data;
+  const qc = useQueryClient();
+  const { data: saved } = useQuery({ queryKey: ["ahp-saved"], queryFn: fetchSavedAhp });
+  const saveMut = useMutation({
+    mutationFn: (name: string) => saveAhp({
+      name, criteria: CRITERIA, matrix,
+      weights: result!.weights, consistency_ratio: result!.consistency_ratio,
+    }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ahp-saved"] }),
+  });
+  const delMut = useMutation({
+    mutationFn: (id: number) => deleteAhp(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ahp-saved"] }),
+  });
+  const onSave = () => {
+    const name = prompt("Nom de cette analyse :", "Pondération " + new Date().toLocaleDateString());
+    if (name) saveMut.mutate(name);
+  };
 
   const pieData = result
     ? Object.entries(result.weights).map(([name, value], i) => ({
@@ -156,11 +175,40 @@ export default function MulticriteriaPage() {
                   <p className="text-2xl font-bold text-primary">{result.global_score}</p>
                   <p className="text-xs text-slate-400">Score global pondéré du territoire</p>
                 </div>
+                <button onClick={onSave} disabled={saveMut.isPending}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-60">
+                  <Save size={16} /> {saveMut.isPending ? "Enregistrement…" : "Enregistrer les résultats"}
+                </button>
               </div>
             </div>
           )}
         </Panel>
       </div>
+
+      {/* Historique des analyses sauvegardées */}
+      {saved && saved.length > 0 && (
+        <Panel title={`Analyses enregistrées (${saved.length})`} className="mt-6">
+          <div className="space-y-2">
+            {saved.map((a) => (
+              <div key={a.id} className="flex items-center justify-between rounded-lg border border-white/5 bg-white/5 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <History size={16} className="text-primary" />
+                  <div>
+                    <p className="text-sm font-medium">{a.name}</p>
+                    <p className="text-xs text-slate-500">
+                      {Object.entries(a.weights).map(([k, v]) => `${k} ${(v * 100).toFixed(0)}%`).join(" · ")}
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => { if (confirm("Supprimer cette analyse ?")) delMut.mutate(a.id); }}
+                  className="rounded p-1.5 text-slate-400 hover:bg-white/5 hover:text-rose-400" title="Supprimer">
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
     </div>
   );
 }
