@@ -7,6 +7,7 @@ import TerritorialAnalysisPage from "./pages/TerritorialAnalysisPage";
 import SimulationPage from "./pages/SimulationPage";
 import MulticriteriaPage from "./pages/MulticriteriaPage";
 import ForesightPage from "./pages/ForesightPage";
+import RiskPlansPage from "@/pages/RiskPlansPage";
 import DataEntryPage from "./pages/DataEntryPage";
 import WilayaProfilePage from "./pages/WilayaProfilePage";
 import DocumentsPage from "./pages/DocumentsPage";
@@ -32,6 +33,7 @@ export default function App() {
           <Route path="/simulation" element={<SimulationPage />} />
           <Route path="/multicritere" element={<MulticriteriaPage />} />
           <Route path="/prospective" element={<ForesightPage />} />
+          <Route path="/gestion-risques" element={<RiskPlansPage />} />
           <Route path="/ajouter" element={<DataEntryPage />} />
           <Route path="/wilaya/:id" element={<WilayaProfilePage />} />
           <Route path="/documents" element={<DocumentsPage />} />

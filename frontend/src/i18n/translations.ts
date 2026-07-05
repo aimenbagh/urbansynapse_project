@@ -15,6 +15,7 @@ export const T: Dict = {
   "nav.simulation": { fr: "Simulation urbaine", ar: "المحاكاة الحضرية", en: "Urban Simulation" },
   "nav.multicriteria": { fr: "Analyse multicritère", ar: "تحليل متعدد المعايير", en: "Multicriteria Analysis" },
   "nav.foresight": { fr: "Planification prospective", ar: "التخطيط الاستشرافي", en: "Foresight Planning" },
+  "nav.riskplans": { fr: "Gestion des risques", ar: "إدارة المخاطر", en: "Risk Management" },
   "nav.compare": { fr: "Comparer wilayas", ar: "مقارنة الولايات", en: "Compare Wilayas" },
   "nav.energy": { fr: "Performance énergétique", ar: "الأداء الطاقوي", en: "Energy Performance" },
   "nav.mobility": { fr: "Mobilité & Accessibilité", ar: "التنقل وإمكانية الوصول", en: "Mobility & Access" },

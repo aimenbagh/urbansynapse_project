@@ -1,8 +1,9 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, territories, scenarios, energy, indicators, ahp, geo, reference, planning, reports, foresight, ingest, layers, profile, users, documents
+from app.api.v1.endpoints import risk_plans, auth, territories, scenarios, energy, indicators, ahp, geo, reference, planning, reports, foresight, ingest, layers, profile, users, documents
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
+api_router.include_router(risk_plans.router)
 api_router.include_router(territories.router)
 api_router.include_router(scenarios.router)
 api_router.include_router(energy.router)

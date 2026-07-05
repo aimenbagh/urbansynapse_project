@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import {
+import { MapPin,
   Database, BrainCircuit, GitBranch, ClipboardCheck, Check, ArrowRight,
   ArrowLeft, RotateCcw, Play, Droplets, Flame, Building2, Zap, Loader2, Sparkles, FileDown,
 } from "lucide-react";
@@ -9,6 +9,7 @@ import { useWizardStore } from "@/store/useWizardStore";
 import { useAppStore } from "@/store/useAppStore";
 import { downloadReportPDF, fetchRecommendations } from "@/api/planning";
 import { fetchProfile } from "@/api/profile";
+import { fetchSubdivisions } from "@/api/riskPlans";
 import { fetchScenarios } from "@/api/foresight";
 import { fetchTerritories } from "@/api/territories";
 import { useQuery } from "@tanstack/react-query";
@@ -55,6 +56,17 @@ const SILOS = [
 export default function AboutPage() {
   const navigate = useNavigate();
   const activeTerritoryId = useAppStore((s) => s.activeTerritoryId);
+  const [focusLevel, setFocusLevel] = useState<"wilaya" | "daira" | "commune">("wilaya");
+  const [focusDaira, setFocusDaira] = useState("");
+  const [focusCommune, setFocusCommune] = useState("");
+  const { data: subsData } = useQuery({
+    queryKey: ["assistant-subs", activeTerritoryId],
+    queryFn: () => fetchSubdivisions(activeTerritoryId),
+    enabled: !!activeTerritoryId,
+  });
+  const focusName = focusLevel === "commune" && focusCommune ? focusCommune
+    : focusLevel === "daira" && focusDaira ? focusDaira : null;
+  const focusLabel = focusLevel === "commune" ? "commune" : focusLevel === "daira" ? "daïra" : "wilaya";
   const { data: territories } = useQuery({ queryKey: ["territories"], queryFn: fetchTerritories });
 
   // Résultats et état d'exécution par étape
@@ -81,7 +93,8 @@ export default function AboutPage() {
         fetchRecommendations(activeTerritoryId).catch(() => ({ recommendations: [] } as any)),
       ]);
       const list = recs?.recommendations ?? [];
-      let out = `Analyse de ${name} : ${p.analysis}\n\nSolutions recommandées :`;
+      const cible = focusName ? `${focusName} (${focusLabel})` : name;
+      let out = `Analyse de ${cible} : ${p.analysis}\n\nSolutions recommandées :`;
       if (list.length) {
         out += "\n" + list.map((r: any, i: number) =>
           `${i + 1}. ${r.title ?? r.name ?? "Action"} — ${r.detail ?? r.description ?? ""}`
@@ -106,14 +119,28 @@ export default function AboutPage() {
           `• ${x.name ?? x.label ?? "Scénario"} : ${x.description ?? x.summary ?? ""}`).join("\n");
         return `${items.length} scénario(s) d'aménagement générés pour ${name} :\n${lines}`;
       }
-      // 3 scénarios types dérivés du profil réel
+      // Pool de scénarios variés → on en tire 3 AU HASARD à chaque génération
       const perf = p.energy_performance;
-      const scenarios = [
-        `• Scénario « Transition énergétique » : porter la performance de ${perf}% à ${Math.min(95, perf + 15)}% via un programme de rénovation massive du bâti.`,
-        `• Scénario « Ville résiliente » : réduire l'indice de risque (${p.risk.global}/100) par la végétalisation, la gestion des eaux pluviales et le renforcement parasismique.`,
-        `• Scénario « Mobilité durable » : réduire la dépendance à la voiture par l'extension des transports en commun et des pistes cyclables.`,
+      const rnd = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
+      const pool = [
+        `• Scénario « Transition énergétique » : porter la performance de ${perf}% à ${Math.min(98, perf + rnd(8, 20))}% via un programme de rénovation massive du bâti (isolation, double vitrage, CVC performant).`,
+        `• Scénario « Ville résiliente » : réduire l'indice de risque (${p.risk.global}/100) d'environ ${rnd(10, 30)}% par la végétalisation, la gestion des eaux pluviales et le renforcement parasismique.`,
+        `• Scénario « Mobilité durable » : viser ${rnd(30, 55)}% de déplacements en transports en commun et mobilités douces (tramway, BRT, pistes cyclables).`,
+        `• Scénario « Sobriété & solaire » : couvrir ${rnd(15, 40)}% de la demande locale par le photovoltaïque sur toitures et l'éclairage public basse consommation.`,
+        `• Scénario « Densification maîtrisée » : concentrer la croissance autour des axes de transport (TOD) pour limiter l'étalement urbain de ${rnd(10, 25)}%.`,
+        `• Scénario « Trame verte & bleue » : créer ${rnd(3, 8)} corridors écologiques et restaurer les zones humides comme tampons contre les inondations.`,
+        `• Scénario « Rénovation du bâti public » : rénover ${rnd(20, 60)} équipements publics (écoles, hôpitaux) comme effet d'entraînement pour le territoire.`,
+        `• Scénario « Économie circulaire » : valoriser ${rnd(30, 70)}% des déchets et développer les matériaux de construction locaux bas-carbone.`,
+        `• Scénario « Îlots de fraîcheur » : aménager ${rnd(5, 20)} places publiques ombragées et végétalisées pour lutter contre la chaleur urbaine.`,
+        `• Scénario « Smart grid » : déployer un réseau intelligent réduisant les pertes de distribution de ${rnd(5, 15)}%.`,
       ];
-      return `3 scénarios d'aménagement proposés pour ${name} :\n${scenarios.join("\n")}`;
+      // mélange (Fisher-Yates) puis on prend les 3 premiers → combinaison différente à chaque fois
+      for (let k = pool.length - 1; k > 0; k--) {
+        const j = Math.floor(Math.random() * (k + 1));
+        [pool[k], pool[j]] = [pool[j], pool[k]];
+      }
+      const scenarios = pool.slice(0, 3);
+      return `3 scénarios d'aménagement proposés pour ${focusName ? focusName + " (" + focusLabel + ")" : name} :\n${scenarios.join("\n")}`;
     }
     if (n === 4) {
       // Rapport décisionnel PDF
@@ -179,6 +206,35 @@ export default function AboutPage() {
             </button>
           </div>
         } />
+
+      {/* Sélecteur de niveau (wilaya / daïra / commune) */}
+      <Panel className="mb-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="flex items-center gap-1.5 text-sm text-slate-300"><MapPin size={15} className="text-primary" /> Cible de l'analyse :</span>
+          {[["wilaya", "Wilaya"], ["daira", "Daïra"], ["commune", "Commune"]].map(([lvl, lbl]) => (
+            <button key={lvl}
+              onClick={() => { setFocusLevel(lvl as any); if (lvl === "wilaya") { setFocusDaira(""); setFocusCommune(""); } if (lvl === "daira") setFocusCommune(""); }}
+              className={`rounded-lg px-3 py-1.5 text-sm ${focusLevel === lvl ? "bg-primary text-white" : "bg-white/5 text-slate-300 hover:bg-white/10"}`}>
+              {lbl}
+            </button>
+          ))}
+          {(focusLevel === "daira" || focusLevel === "commune") && (
+            <select value={focusDaira} onChange={(e) => { setFocusDaira(e.target.value); setFocusCommune(""); }}
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm outline-none">
+              <option value="" className="bg-navy">— Daïra —</option>
+              {subsData?.dairas.map((d) => <option key={d.nom} value={d.nom} className="bg-navy">{d.nom}</option>)}
+            </select>
+          )}
+          {focusLevel === "commune" && !!focusDaira && (
+            <select value={focusCommune} onChange={(e) => setFocusCommune(e.target.value)}
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm outline-none">
+              <option value="" className="bg-navy">— Commune —</option>
+              {(subsData?.dairas.find((d) => d.nom === focusDaira)?.communes ?? []).map((cm) => <option key={cm} value={cm} className="bg-navy">{cm}</option>)}
+            </select>
+          )}
+        </div>
+        {!!focusName && <p className="mt-2 text-xs text-slate-400">Analyse ciblée sur <span className="text-accent-2">{focusName}</span> ({focusLabel}) — au sein de la wilaya de {territoryName()}.</p>}
+      </Panel>
 
       {/* Problématique (contexte) */}
       <Panel className="mb-6">

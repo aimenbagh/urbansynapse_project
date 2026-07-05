@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import {
+  ShieldAlert,
   LayoutDashboard, Map, Activity, Scale, TrendingUp, Navigation, Shield,
   Zap, CloudRain, FileText, Settings, PlusCircle, Files, Users, GitCompare, Info,
 } from "lucide-react";
@@ -17,6 +18,7 @@ const SECTIONS = [
     { to: "/multicritere", key: "nav.multicriteria", icon: Scale },
     { to: "/prospective", key: "nav.foresight", icon: TrendingUp },
     { to: "/comparer", key: "nav.compare", icon: GitCompare },
+    { to: "/gestion-risques", key: "nav.riskplans", icon: ShieldAlert },
   ]},
   { titleKey: "nav.themes", items: [
     { to: "/energie", key: "nav.energy", icon: Zap },
