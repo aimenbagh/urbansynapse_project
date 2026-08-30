@@ -5,6 +5,6 @@ __pycache__
 tests
 urbansynapse.db
 .env
-data
+/data
 alembic
 scripts/setup_windows.bat
