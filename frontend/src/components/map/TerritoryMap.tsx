@@ -506,7 +506,15 @@ export default function TerritoryMap({ planMode = false }: { planMode?: boolean 
                   <p className="font-semibold">{popup.props.name}</p>
                   <p>Population (2008) : {Number(popup.props.population).toLocaleString()}</p>
                   <p>Taux d'accroissement : {popup.props.growth_rate}%</p>
-                  <p className="mt-1 text-[10px] text-slate-500">Source : RGPH 2008</p>
+                  {popup.props.eleves != null && (
+                    <div className="mt-1.5 border-t border-white/10 pt-1.5">
+                      <p className="text-[10px] font-medium text-accent-2">Équipements scolaires (réel 2020)</p>
+                      <p>Élèves : {Number(popup.props.eleves).toLocaleString()}</p>
+                      <p>Lycées : {popup.props.lycees} · Collèges : {popup.props.cems}</p>
+                      <p>Enseignants : {Number(popup.props.enseignants).toLocaleString()}</p>
+                    </div>
+                  )}
+                  <p className="mt-1 text-[10px] text-slate-500">Sources : RGPH 2008 · Enquête Éducation 2020</p>
                 </>
               ) : popup.props.kind === "climate" ? (
                 <>

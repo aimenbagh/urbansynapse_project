@@ -461,3 +461,22 @@ def stats_age(t) -> int:
     import hashlib
     h = int(hashlib.md5((t.wilaya_code or "16").encode()).hexdigest(), 16)
     return 20 + h % 25
+
+
+@router.get("/education/summary")
+def education_summary():
+    """Synthèse des équipements scolaires réels d'Alger (Enquête Exhaustive 2020)."""
+    from app.data.education_data import education_totals, EDUCATION_ALGER
+    tot = education_totals()
+    top = sorted(EDUCATION_ALGER.items(),
+                 key=lambda kv: kv[1]["eleves_secondaire"] + kv[1]["eleves_moyen"],
+                 reverse=True)[:10]
+    return {
+        **tot,
+        "source": "Enquête Exhaustive Ministère de l'Éducation, Octobre 2020",
+        "top_communes": [
+            {"commune": k, "eleves": v["eleves_secondaire"] + v["eleves_moyen"],
+             "lycees": v["lycees"], "cems": v["cems"]}
+            for k, v in top
+        ],
+    }

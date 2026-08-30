@@ -6,6 +6,8 @@ from app.db.session import get_db
 from app.api.deps import get_current_user
 from app.services.report import build_report
 from app.services.report_pdf import build_report_pdf
+from app.services.full_report_pdf import build_full_report_pdf
+from app.services.assistant_pdf import build_assistant_pdf
 from fastapi.responses import Response
 from app.services.planning import generate_recommendations
 
@@ -73,6 +75,48 @@ def _profile_for_pdf(territory_id: int, db):
         pass
     return out
 
+
+
+def _collect_full(territory_id: int, db: Session) -> dict:
+    """Rassemble TOUT le contenu analytique du site pour le rapport complet."""
+    from app.models.territory import Territory
+    from app.data.risks_data import risk_profile
+    from app.data.resilience_data import resilience_profile
+    from app.data.mobility_data import mobility_profile
+    from app.data.energy_data import energy_distribution, estimate_buildings
+    t = db.get(Territory, territory_id)
+    name = t.name if t else f"Territoire {territory_id}"
+    wc = (t.wilaya_code or "").zfill(2) if t else "16"
+    lat = t.center_lat or 36; pop = t.population or 0; area = t.area_km2 or 1
+    try:
+        from app.api.v1.endpoints.profile import territory_profile, dashboard_data
+        prof = territory_profile(territory_id, db)
+        eperf = round(prof.get("energy_performance", 70))
+        dash = dashboard_data(territory_id, db)
+        dashboard = dash["kpis"]
+    except Exception:
+        eperf = 70; dashboard = {}
+    risks = risk_profile(wc, lat, pop, area)
+    resil = resilience_profile(wc, lat, pop, area, eperf)
+    mob = mobility_profile(wc, pop, area)
+    try:
+        raw = energy_distribution(wc, estimate_buildings(pop))
+        items = raw.get("distribution", [])
+        total = raw.get("total_buildings", 1) or 1
+        dist = [{"class": x["classe"], "count": x["count"],
+                 "pct": round(x["count"] / total * 100)} for x in items]
+    except Exception:
+        dist = []
+    return {
+        "name": name,
+        "dashboard": dashboard,
+        "energy": {"performance": eperf, "distribution": dist},
+        "risks": {"seismic_zone": risks["seismic_zone"], "global": risks["global"], "hazards": risks["hazards"]},
+        "resilience": {"global": resil["global"], "dimensions": resil["dimensions"]},
+        "mobility": {"transport_coverage": mob["transport_coverage"], "pedestrian": mob["pedestrian"], "modal_split": mob["modal_split"]},
+    }
+
+
 @router.get("/{territory_id}", response_class=PlainTextResponse)
 def generate(territory_id: int, db: Session = Depends(get_db)):
     """Renvoie un rapport Markdown de synthèse du territoire."""
@@ -85,12 +129,25 @@ def generate(territory_id: int, db: Session = Depends(get_db)):
 
 @router.get("/{territory_id}/pdf")
 def generate_pdf(territory_id: int, db: Session = Depends(get_db)):
-    """Renvoie le rapport de synthèse au format PDF."""
-    name, stats, indicators, recs = _collect(territory_id, db)
-    pdf_bytes = build_report_pdf(name, stats, indicators, recs, _profile_for_pdf(territory_id, db))
+    """Rapport de l'ASSISTANT (4 étapes uniquement)."""
+    from app.models.territory import Territory
+    from app.services.planning import generate_recommendations
+    t = db.get(Territory, territory_id)
+    name = t.name if t else f"Territoire {territory_id}"
+    try:
+        from app.api.v1.endpoints.profile import territory_profile
+        prof = territory_profile(territory_id, db)
+    except Exception:
+        prof = {"energy_performance": 70, "risk": {"global": 50}, "population": None}
+    # recommandations
+    try:
+        _, _, indicators, recs = _collect(territory_id, db)
+    except Exception:
+        recs = []
+    pdf_bytes = build_assistant_pdf(name, prof, recs)
     return Response(
         content=pdf_bytes, media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="rapport_{name}.pdf"'},
+        headers={"Content-Disposition": f'attachment; filename="assistant_{name}.pdf"'},
     )
 
 
@@ -119,8 +176,9 @@ def generate_and_save(territory_id: int, db: Session = Depends(get_db), user=Dep
     from app.models.report import Report
     from app.models.territory import Territory
 
-    name, stats, indicators, recs = _collect(territory_id, db)
-    pdf_bytes = build_report_pdf(name, stats, indicators, recs, _profile_for_pdf(territory_id, db))
+    full = _collect_full(territory_id, db)
+    pdf_bytes = build_full_report_pdf(full)
+    name = full["name"]
 
     # Instantané des données réelles
     t = db.get(Territory, territory_id)

@@ -199,18 +199,26 @@ def communes_layer(territory_id: int, db: Session = Depends(get_db)):
                 "note": "Données communales réelles disponibles pour Alger uniquement."}
 
     from app.data.communes_alger import COMMUNES_ALGER
+    from app.data.education_data import education_profile
     features = []
     for c in COMMUNES_ALGER:
         if c["lon"] is None or c["lat"] is None:
             continue
+        edu = education_profile(c["name"]) or {}
+        props = {
+            "kind": "commune", "name": c["name"],
+            "population": c["population"],
+            "growth_rate": c["growth_rate"],
+        }
+        if edu:
+            props["eleves"] = edu["eleves_secondaire"] + edu["eleves_moyen"]
+            props["lycees"] = edu["lycees"]
+            props["cems"] = edu["cems"]
+            props["enseignants"] = edu["enseignants_sec"] + edu["enseignants_moyen"]
         features.append({
             "type": "Feature",
             "geometry": {"type": "Point", "coordinates": [c["lon"], c["lat"]]},
-            "properties": {
-                "kind": "commune", "name": c["name"],
-                "population": c["population"],
-                "growth_rate": c["growth_rate"],
-            },
+            "properties": props,
         })
     return {"type": "FeatureCollection", "features": features,
             "source": "RGPH 2008 - Office National des Statistiques"}
