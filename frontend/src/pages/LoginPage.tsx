@@ -9,8 +9,8 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.setAuth);
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [email, setEmail] = useState("admin@urbansynapse.ai");
-  const [password, setPassword] = useState("admin123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
 
   const mutation = useMutation({
