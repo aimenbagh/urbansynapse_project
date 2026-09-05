@@ -68,6 +68,40 @@ def risk_layer(territory_id: int, db: Session = Depends(get_db)):
     return {"type": "FeatureCollection", "features": features}
 
 
+@router.get("/{territory_id}/fires")
+def fires_layer(territory_id: int, db: Session = Depends(get_db)):
+    """Foyers actifs NASA FIRMS (temps quasi réel) sous forme de points GeoJSON,
+    pour affichage sur la carte (couche 'Feux actifs (FIRMS)')."""
+    from app.models.territory import Territory
+    from app.services.firms_service import fetch_active_fires
+
+    t = db.get(Territory, territory_id)
+    if not t:
+        raise HTTPException(404, "Territoire introuvable")
+    if t.center_lat is None or t.center_lon is None:
+        return {"type": "FeatureCollection", "features": [], "is_live": False,
+                "message": "Coordonnées du territoire non définies"}
+
+    summary = fetch_active_fires(lat=t.center_lat, lon=t.center_lon,
+                                  territory_id=t.id, territory_name=t.name)
+    features = [{
+        "type": "Feature",
+        "geometry": {"type": "Point", "coordinates": [f["longitude"], f["latitude"]]},
+        "properties": {
+            "kind": "fire", "confidence": f.get("confidence"),
+            "frp": f.get("frp"), "acq_date": f.get("acq_date"),
+            "acq_time": f.get("acq_time"), "satellite": f.get("satellite"),
+            "daynight": f.get("daynight"),
+        },
+    } for f in summary.get("fires", [])]
+    return {
+        "type": "FeatureCollection", "features": features,
+        "is_live": summary.get("is_live"), "risk_level": summary.get("risk_level"),
+        "last_updated": summary.get("last_updated"), "message": summary.get("message"),
+        "source_url": summary.get("source_url"),
+    }
+
+
 @router.get("/{territory_id}/mobility")
 def mobility_layer(territory_id: int, db: Session = Depends(get_db)):
     """Réseau de mobilité : lignes reliant les centres des zones (axes/transport)."""

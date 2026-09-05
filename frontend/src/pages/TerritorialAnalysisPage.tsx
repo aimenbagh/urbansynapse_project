@@ -1,8 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   Layers, Zap, Building, AlertTriangle, Navigation, BarChart2, Check,
-  Users, Ruler, Home, Sparkles, Lightbulb, UserSquare2,
+  Users, Ruler, Home, Sparkles, Lightbulb, UserSquare2, Flame, ExternalLink, RefreshCw,
 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
 import Panel from "@/components/ui/Panel";
@@ -13,6 +13,8 @@ import SectorDonut from "@/components/charts/SectorDonut";
 import { fetchIndicators } from "@/api/indicators";
 import { fetchTerritoryStats } from "@/api/territories";
 import { fetchRecommendations } from "@/api/planning";
+import { fetchFireSummary } from "@/api/fires";
+import { timeAgo } from "@/utils/time";
 import { useAppStore } from "@/store/useAppStore";
 
 const LAYERS = [
@@ -20,17 +22,25 @@ const LAYERS = [
   { id: "energy", label: "Réseaux énergétiques", icon: Zap },
   { id: "buildings", label: "Bâti existant", icon: Building },
   { id: "risks", label: "Risques naturels", icon: AlertTriangle },
+  { id: "wildfires", label: "Feux actifs (NASA FIRMS)", icon: Flame },
   { id: "mobility", label: "Mobilité & Accessibilité", icon: Navigation },
   { id: "socio", label: "Données socio-économiques", icon: BarChart2 },
   { id: "communes", label: "Communes (population réelle)", icon: Users },
 ];
 
-const RISKS = [
+const STATIC_RISKS = [
   { name: "Inondation", level: "Élevé", color: "text-rose-400" },
   { name: "Séisme", level: "Modéré", color: "text-amber-400" },
-  { name: "Feu de forêt", level: "Faible", color: "text-emerald-400" },
   { name: "Îlot de chaleur", level: "Élevé", color: "text-rose-400" },
 ];
+
+const RISK_COLOR: Record<string, string> = {
+  Faible: "text-emerald-400",
+  Modéré: "text-amber-400",
+  Élevé: "text-rose-400",
+  Critique: "text-rose-500",
+  Indisponible: "text-slate-500",
+};
 
 const PRIORITY_STYLE: Record<string, string> = {
   Haute: "bg-rose-500/15 text-rose-300",
@@ -54,6 +64,14 @@ export default function TerritorialAnalysisPage() {
   const { data: recommendations } = useQuery({
     queryKey: ["recommendations", territoryId],
     queryFn: () => fetchRecommendations(territoryId),
+  });
+  // Risque incendie en temps (quasi) réel — NASA FIRMS, même source que
+  // https://firms.modaps.eosdis.nasa.gov/map/ — rafraîchi automatiquement.
+  const queryClient = useQueryClient();
+  const { data: fireSummary, isFetching: fireLoading } = useQuery({
+    queryKey: ["fire-summary", territoryId],
+    queryFn: () => fetchFireSummary(territoryId),
+    refetchInterval: 5 * 60 * 1000,
   });
 
   const getVal = (k: string) => indicators?.find((i) => i.key === k)?.value;
@@ -131,14 +149,51 @@ export default function TerritorialAnalysisPage() {
 
         <div className="space-y-6">
           <Panel title="Analyse énergétique"><SectorDonut /></Panel>
-          <Panel title="Analyse des risques">
+          <Panel>
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="font-semibold">Analyse des risques</h2>
+              <button
+                onClick={() => queryClient.invalidateQueries({ queryKey: ["fire-summary", territoryId] })}
+                title="Rafraîchir les données incendie"
+                className="rounded p-1 text-slate-400 hover:bg-white/5 hover:text-slate-200">
+                <RefreshCw size={13} className={fireLoading ? "animate-spin" : ""} />
+              </button>
+            </div>
             <div className="space-y-2">
-              {RISKS.map((r) => (
+              {STATIC_RISKS.map((r) => (
                 <div key={r.name} className="flex items-center justify-between text-sm">
                   <span className="text-slate-300">{r.name}</span>
                   <span className={`font-medium ${r.color}`}>{r.level}</span>
                 </div>
               ))}
+              <div className="flex items-center justify-between text-sm">
+                <span className="flex items-center gap-1.5 text-slate-300">
+                  <Flame size={14} className="text-orange-400" /> Feu de forêt
+                </span>
+                <span className={`font-medium ${RISK_COLOR[fireSummary?.risk_level ?? ""] ?? "text-slate-500"}`}>
+                  {fireSummary?.risk_level ?? "…"}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-3 rounded-lg bg-white/5 p-2.5 text-[11px] text-slate-400">
+              {fireSummary?.is_live ? (
+                <>
+                  <p><b className="text-slate-200">{fireSummary.active_count}</b> foyer(s) actif(s) détecté(s)
+                    (satellite {fireSummary.source}, dernières {fireSummary.day_range * 24}h)
+                    {fireSummary.max_frp != null && <> · FRP max {fireSummary.max_frp.toFixed(1)} MW</>}
+                  </p>
+                  <p className="mt-0.5">Mise à jour {fireSummary.last_updated ? timeAgo(fireSummary.last_updated) : "—"}</p>
+                </>
+              ) : (
+                <p>{fireSummary?.message ?? "Chargement des données NASA FIRMS…"}</p>
+              )}
+              {fireSummary?.source_url && (
+                <a href={fireSummary.source_url} target="_blank" rel="noopener noreferrer"
+                  className="mt-1 flex items-center gap-1 text-primary hover:underline">
+                  Voir la carte FIRMS en direct <ExternalLink size={11} />
+                </a>
+              )}
             </div>
           </Panel>
         </div>

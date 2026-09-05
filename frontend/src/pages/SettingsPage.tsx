@@ -3,8 +3,8 @@ import PageHeader from "@/components/ui/PageHeader";
 import Panel from "@/components/ui/Panel";
 import { useAuthStore } from "@/store/useAuthStore";
 import { usePrefsStore, type Lang } from "@/store/usePrefsStore";
+import { useNotificationsStore } from "@/store/useNotificationsStore";
 import { useT } from "@/i18n/translations";
-import { useState } from "react";
 
 const LANGS: { id: Lang; label: string }[] = [
   { id: "fr", label: "Français" },
@@ -16,7 +16,8 @@ export default function SettingsPage() {
   const t = useT();
   const authUser = useAuthStore((s) => s.user);
   const { theme, lang, setTheme, setLang } = usePrefsStore();
-  const [notif, setNotif] = useState(true);
+  const notif = useNotificationsStore((s) => s.enabled);
+  const setNotif = useNotificationsStore((s) => s.setEnabled);
 
   return (
     <div>
@@ -70,7 +71,7 @@ export default function SettingsPage() {
               <span className="flex items-center gap-2 text-sm">
                 <Bell size={16} className="text-primary" /> {t("set.notifications")}
               </span>
-              <button onClick={() => setNotif((v) => !v)}
+              <button onClick={() => setNotif(!notif)}
                 className={`relative h-6 w-11 rounded-full transition ${notif ? "bg-primary" : "bg-white/10"}`}>
                 <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${notif ? "left-[22px]" : "left-0.5"}`} />
               </button>

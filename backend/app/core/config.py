@@ -28,6 +28,19 @@ class Settings(BaseSettings):
     ML_MODEL_DIR: str = "app/ml/models"
     MISTRAL_API_KEY: str = ""
 
+    # === NASA FIRMS (Fire Information for Resource Management System) ===
+    # Clé API gratuite (obligatoire pour interroger les données temps réel) :
+    # https://firms.modaps.eosdis.nasa.gov/api/area/  -> "Get MAP_KEY"
+    FIRMS_MAP_KEY: str = ""
+    # Capteur satellite utilisé : VIIRS_SNPP_NRT (résolution 375m, ~temps réel)
+    FIRMS_SOURCE: str = "VIIRS_SNPP_NRT"
+    # Fenêtre temporelle en jours (1 = dernières 24h, comme la carte FIRMS officielle)
+    FIRMS_DAY_RANGE: int = 1
+    # Rayon (en degrés) autour du centre du territoire pour la zone interrogée
+    FIRMS_BBOX_BUFFER_DEG: float = 0.6
+    # Durée de mise en cache des résultats (secondes) pour respecter le quota FIRMS
+    FIRMS_CACHE_TTL_SECONDS: int = 600
+
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod
     def _split_origins(cls, v):

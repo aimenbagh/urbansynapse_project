@@ -4,7 +4,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useQuery } from "@tanstack/react-query";
 import { fetchTerritoryGeoJSON } from "@/api/geo";
 import { fetchEnergyNetwork } from "@/api/layers";
-import { fetchRiskLayer, fetchMobilityLayer, fetchSocioLayer, fetchClimateLayer, fetchCommunesLayer } from "@/api/layers";
+import { fetchRiskLayer, fetchMobilityLayer, fetchSocioLayer, fetchClimateLayer, fetchCommunesLayer, fetchFireLayer } from "@/api/layers";
 import { exportGeoJSON } from "@/api/geo";
 import { BASEMAPS, type BasemapId } from "./basemaps";
 import { Layers as LayersIcon, Download, Image as ImageIcon, Thermometer, Box, Search, Ruler, Pentagon, Trash2 } from "lucide-react";
@@ -31,6 +31,16 @@ const PRIORITY_LINE: any = [
 const RISK_COLOR: any = [
   "match", ["get", "level"],
   "Élevé", "#dc2626", "Modéré", "#eab308", "Faible", "#22c55e", "#94a3b8",
+];
+
+// Couleur des foyers actifs FIRMS par confiance (VIIRS: l/n/h)
+const FIRE_COLOR: any = [
+  "match", ["get", "confidence"],
+  "h", "#dc2626", "n", "#f97316", "l", "#fbbf24", "#f97316",
+];
+const FIRE_RADIUS: any = [
+  "interpolate", ["linear"], ["coalesce", ["get", "frp"], 5],
+  0, 5, 10, 7, 50, 10, 150, 14,
 ];
 
 const CLIMATE_TEMP_COLOR: any = [
@@ -70,6 +80,7 @@ export default function TerritoryMap({ planMode = false }: { planMode?: boolean 
   const showSocio = activeLayers.includes("socio");
   const showCommunes = activeLayers.includes("communes");
   const showEnergyNet = activeLayers.includes("energy");
+  const showWildfires = activeLayers.includes("wildfires");
 
   const { data } = useQuery({ queryKey: ["geojson", territoryId], queryFn: () => fetchTerritoryGeoJSON(territoryId) });
   const { data: risks } = useQuery({ queryKey: ["risks", territoryId], queryFn: () => fetchRiskLayer(territoryId), enabled: showRisks });
@@ -77,6 +88,11 @@ export default function TerritoryMap({ planMode = false }: { planMode?: boolean 
   const { data: socio } = useQuery({ queryKey: ["socio", territoryId], queryFn: () => fetchSocioLayer(territoryId), enabled: showSocio });
   const { data: communes } = useQuery({ queryKey: ["communes", territoryId], queryFn: () => fetchCommunesLayer(territoryId), enabled: showCommunes });
   const { data: energyNet } = useQuery({ queryKey: ["energy-net", territoryId], queryFn: () => fetchEnergyNetwork(territoryId), enabled: showEnergyNet });
+  // Foyers actifs NASA FIRMS — temps quasi réel, on rafraîchit périodiquement pendant que la couche est active.
+  const { data: fires } = useQuery({
+    queryKey: ["fires-layer", territoryId], queryFn: () => fetchFireLayer(territoryId),
+    enabled: showWildfires, refetchInterval: showWildfires ? 5 * 60 * 1000 : false,
+  });
   const { data: climate } = useQuery({
     queryKey: ["climate", territoryId, climateVar],
     queryFn: () => fetchClimateLayer(territoryId, climateVar!),
@@ -130,7 +146,7 @@ export default function TerritoryMap({ planMode = false }: { planMode?: boolean 
   const OUR_LAYERS = ["zones-fill", "zones-line",
                   "risks-fill", "risks-line", "risks-3d", "mobility-line", "socio-circle",
                   "communes-circle", "communes-label", "energy-net-line", "energy-net-node",
-                  "buildings-fill", "buildings-line", "buildings-3d"];
+                  "buildings-fill", "buildings-line", "buildings-3d", "fires-circle"];
   const bumpLayers = () => {
     const map = mapRef.current?.getMap?.();
     if (!map) return;
@@ -153,7 +169,7 @@ export default function TerritoryMap({ planMode = false }: { planMode?: boolean 
       map.off?.("idle", bumpLayers);
       map.off?.("sourcedata", bumpLayers);
     };
-  }, [is3D, basemap, showBuildings, showRisks, showMobility, showSocio, showCommunes, showEnergyNet]);
+  }, [is3D, basemap, showBuildings, showRisks, showMobility, showSocio, showCommunes, showEnergyNet, showWildfires]);
 
   const dataCenter = (data as any)?.territory?.center as [number, number] | null | undefined;
   const center = dataCenter ?? CENTERS[territoryId] ?? [3.0588, 36.7538];
@@ -234,6 +250,7 @@ export default function TerritoryMap({ planMode = false }: { planMode?: boolean 
   if (showSocio) interactive.push("socio-circle");
   if (showCommunes) interactive.push("communes-circle");
   if (climateVar) interactive.push("climate-fill");
+  if (showWildfires) interactive.push("fires-circle");
 
   return (
     <div className="relative h-full">
@@ -328,6 +345,11 @@ export default function TerritoryMap({ planMode = false }: { planMode?: boolean 
           <div className="flex gap-4">
             <span className="text-slate-300">Zones : <b className="text-primary">{zones.features.length}</b></span>
             <span className="text-slate-300">Bâtiments : <b className="text-primary">{buildings.features.length}</b></span>
+            {showWildfires && (
+              <span className="flex items-center gap-1 text-orange-400">
+                🔥 <b>{fires?.features?.length ?? 0}</b> foyer(s) actif(s)
+              </span>
+            )}
             {is3D && <span className="rounded bg-accent-2/30 px-1.5 text-accent-2">3D</span>}
           </div>
         </div>
@@ -495,6 +517,17 @@ export default function TerritoryMap({ planMode = false }: { planMode?: boolean 
               paint={{ "text-color": "#fbbf24", "text-halo-color": "#0a1428", "text-halo-width": 1 }} />
           </Source>
         )}
+        {showWildfires && fires && (
+          <Source id="fires" type="geojson" data={fires}>
+            <Layer id="fires-circle" type="circle"
+              paint={{
+                "circle-radius": FIRE_RADIUS,
+                "circle-color": FIRE_COLOR,
+                "circle-opacity": 0.85,
+                "circle-stroke-color": "#fff7ed", "circle-stroke-width": 1,
+              }} />
+          </Source>
+        )}
 
 
 
@@ -527,6 +560,14 @@ export default function TerritoryMap({ planMode = false }: { planMode?: boolean 
                   <p className="font-semibold">Risque — {popup.props.zone}</p>
                   <p>Type : {popup.props.risk_type}</p>
                   <p>Niveau : <b style={{ color: popup.props.level === "Élevé" ? "#dc2626" : popup.props.level === "Modéré" ? "#b45309" : "#15803d" }}>{popup.props.level}</b></p>
+                </>
+              ) : popup.props.kind === "fire" ? (
+                <>
+                  <p className="font-semibold text-orange-600">🔥 Foyer actif — NASA FIRMS</p>
+                  <p>Détecté : {popup.props.acq_date} à {popup.props.acq_time} UTC</p>
+                  <p>Satellite : {popup.props.satellite ?? "—"} {popup.props.daynight === "N" ? "(nuit)" : popup.props.daynight === "D" ? "(jour)" : ""}</p>
+                  <p>Confiance : {popup.props.confidence ?? "—"}</p>
+                  {popup.props.frp != null && <p>Puissance radiative (FRP) : {popup.props.frp} MW</p>}
                 </>
               ) : popup.props.kind === "mobility" ? (
                 <>

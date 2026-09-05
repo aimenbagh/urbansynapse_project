@@ -1,10 +1,11 @@
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.schemas.territory import (
     TerritoryRead, TerritoryStats, ZoneRead, BuildingRead,
 )
+from app.schemas.fire import FireSummary
 
 router = APIRouter(prefix="/territories", tags=["territories"])
 
@@ -53,6 +54,32 @@ def territory_stats(territory_id: int, db: Session = Depends(get_db)):
         zones_count=len(zones), buildings_count=len(buildings),
         avg_building_age=round(sum(ages) / len(ages), 1) if ages else None,
         avg_energy_class_score=round(sum(scores) / len(scores), 2) if scores else None,
+    )
+
+
+@router.get("/{territory_id}/fires", response_model=FireSummary)
+def territory_fires(
+    territory_id: int,
+    db: Session = Depends(get_db),
+    refresh: bool = Query(False, description="Ignore le cache et interroge FIRMS immédiatement"),
+):
+    """Risque d'incendie en temps (quasi) réel via NASA FIRMS (VIIRS NRT),
+    sur une zone tampon autour du centre du territoire — mêmes détections
+    actives que la carte officielle https://firms.modaps.eosdis.nasa.gov/map/
+    """
+    from app.models.territory import Territory
+    from app.services.firms_service import fetch_active_fires
+
+    t = db.get(Territory, territory_id)
+    if not t:
+        raise HTTPException(404, "Territoire introuvable")
+    if t.center_lat is None or t.center_lon is None:
+        raise HTTPException(422, "Coordonnées du territoire non définies")
+
+    return fetch_active_fires(
+        lat=t.center_lat, lon=t.center_lon,
+        territory_id=t.id, territory_name=t.name,
+        force_refresh=refresh,
     )
 
 

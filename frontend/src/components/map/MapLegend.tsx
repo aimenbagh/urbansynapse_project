@@ -31,6 +31,7 @@ export default function MapLegend() {
           <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-rose-600/50 border border-rose-500" /><span className="text-slate-400">Risques</span></span>
           <span className="flex items-center gap-2"><span className="h-1 w-4 rounded bg-cyan-400" /><span className="text-slate-400">Mobilité</span></span>
           <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-full bg-purple-500/50 border border-purple-400" /><span className="text-slate-400">Densité socio-éco</span></span>
+          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-full bg-orange-500 border border-orange-200" /><span className="text-slate-400">Feux actifs (NASA FIRMS, temps réel)</span></span>
         </div>
       </div>
     </div>

@@ -17,3 +17,7 @@ export const fetchCommunesLayer = async (territoryId: number) =>
 
 export const fetchEnergyNetwork = async (territoryId: number) =>
   (await apiClient.get(`/layers/${territoryId}/energy-network`)).data;
+
+// Feux actifs NASA FIRMS (temps quasi réel) sous forme de points GeoJSON
+export const fetchFireLayer = async (territoryId: number) =>
+  (await apiClient.get(`/layers/${territoryId}/fires`)).data;
